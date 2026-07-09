@@ -21,14 +21,15 @@ def find_edges(image, sigma=0, threshold=0.5, low=0.1, high=99.9, **kwargs):
     from skimage.feature import canny
     a = np.percentile(image, low)
     b = np.percentile(image, high)
-    threshold_ = a + (b - a) * threshold
+    threshold_ = (b - a) * threshold
 
     edges = canny(np.nan_to_num(image), sigma=sigma, low_threshold=threshold_, high_threshold=threshold_)
     return edges
 
 
-def filter_outliers(x, y, acc=1, **kwargs):
+def filter_outliers(x, y, acc=1, max_circles=1000, **kwargs):
     t = np.random.permutation(len(x) // 3 * 3).reshape(3, -1)
+    t = t[:,:max_circles]
     xc0, yc0, r0 = fit3p(x[t], y[t])
     inliers = np.abs(np.sqrt((np.expand_dims(x, axis=0) - np.expand_dims(xc0, axis=1)) ** 2 +
                              (np.expand_dims(y, axis=0) - np.expand_dims(yc0, axis=1)) ** 2) -

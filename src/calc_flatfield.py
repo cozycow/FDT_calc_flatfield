@@ -8,16 +8,21 @@ from limb_fitting import *
 from utils import *
 
 
-def calc_flatfield(folder_in, folder_out='',
+def calc_flatfield(files, folder_out='',
                    dark_file='', deadpix_file='', prefilter_file='', distortion_file='',
+                   niter=20,
                    verbose=True):
-    if verbose:
-        print('start processing folder', folder_in)
 
-    files = sorted(glob.glob(folder_in + '/*.fits.gz'))
+    if verbose:
+        print('start processing')
+
+    if isinstance(files, str):
+        files = sorted(glob.glob(files + '/*.fits*'))
 
     if verbose:
         print('found', len(files), 'files')
+        print('first file is:', files[0])
+        print('last file is:', files[-1])
 
     if verbose:
         print('reading and preprocessing the data')
@@ -42,13 +47,13 @@ def calc_flatfield(folder_in, folder_out='',
     temperature = int(headers[0]['FPMPTSP1'])
     if verbose:
         print('the PMP SP temperature is:', temperature)
-        print('the FG SP temperature is:', headers[0]['FGH_TSP1'])
+        print('the FG SP temperature is:', int(headers[0]['FGH_TSP1']))
         print('the continuum position is:', headers[0]['CONTPOSN'])
 
     if verbose:
         print('calculating and correcting transmittance')
 
-    transmittance = calc_transmittance(datas[:, 2])
+    transmittance = calc_transmittance(datas[:, 2], niter=niter)
     datas /= np.nan_to_num(transmittance, nan=1)
 
     if verbose:
@@ -124,8 +129,6 @@ def calc_flatfield(folder_in, folder_out='',
     if verbose:
         print('done')
 
-    return flat_file, ghost_file
-
 
 def preprocess(data, header,
                dark_file='', deadpix_file='', prefilter_file='', distortion_file='', verbose=True):
@@ -153,7 +156,7 @@ def preprocess(data, header,
     return data.astype(np.float32)
 
 
-def calc_transmittance(images, niter=10):
+def calc_transmittance(images, niter=20):
 
     #calculating disk centers
     centers = []
@@ -245,18 +248,23 @@ def calc_polarization(I, Q, xr, yr, degree=2, sigma=30, niter=3):
 
 
 def calc_reflection_center(I, Q):
-    from scipy.ndimage import binary_dilation
+    from scipy.ndimage import binary_dilation, binary_erosion
     from skimage.feature import canny
 
     a = np.percentile(I[0], 0.1)
     b = np.percentile(I[0], 99.9)
     threshold = a + (b - a) * 0.1
 
+    d = np.percentile(np.abs(Q[0]), 99)
+    threshold_ = d * 0.04
+
     X, Y = [], []
 
     for i in range(len(I)):
-        mask = binary_dilation(I[i] > threshold, iterations=5)
-        edges = canny(Q[i], sigma=8, low_threshold=0.9, high_threshold=0.9, use_quantiles=True)
+        mask = I[i] > threshold
+        mask = binary_dilation(mask, iterations=20) * ~binary_erosion(mask, iterations=20)
+
+        edges = canny(Q[i], sigma=8, low_threshold=threshold_, high_threshold=threshold_)
         edges *= ~mask
 
         xe, ye = np.where(edges)
