@@ -27,6 +27,18 @@ def generate_filename(file, prefix='ilam'):
                      'V' + datetime.today().strftime('%Y%m%d%H%M') + temp[4][-1],  temp[-1]]) + '.fits'
 
 
+def crop(image, header=None, x1=None, x2=None, y1=None, y2=None, **kwargs):
+    if header is not None:
+        x1, x2, y1, y2 = header['PXBEG2'] - 1, header['PXEND2'], header['PXBEG1'] - 1, header['PXEND1']
+    nx, ny = x2 - x1 + 1, y2 - y1 + 1
+
+    if (isinstance(image, np.ndarray) and (len(image.shape) > 1) and (image.shape[-2:] != (nx, ny)) and
+            x1 is not None and x2 is not None and y1 is not None and y2 is not None):
+        return image[..., x1:x2, y1:y2]
+    else:
+        return image
+
+
 def undistort(data, header, xd, yd, **kwargs):
     def crop_grid(xi, yi, header):
         nx, ny = header['NAXIS2'], header['NAXIS1']
@@ -234,3 +246,14 @@ def reflection_point_predict(header):
     xr = np.polyval(px, r_sun) - dx
     yr = np.polyval(py, r_sun) - dy
     return xr, yr
+
+
+def interpolate(f, x, x_new):
+    idx = np.searchsorted(x, x_new).clip(1, len(x) - 1)
+    xa, xb = x[idx - 1], x[idx]
+    dx = xb - xa
+
+    a, b = (xb - x_new) / dx, (x_new - xa) / dx
+    fa = np.take_along_axis(f, idx - 1, axis=0)
+    fb = np.take_along_axis(f, idx, axis=0)
+    return fa * a + fb * b

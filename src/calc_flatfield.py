@@ -1,7 +1,7 @@
 import numpy as np
 from astropy.io import fits
 import glob
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, binary_dilation
 
 from prefilter_correction import correct_prefilter
 from limb_fitting import *
@@ -9,61 +9,108 @@ from utils import *
 
 
 def calc_flatfield(files, folder_out='',
-                   dark_file='', deadpix_file='', prefilter_file='', distortion_file='',
-                   niter=20,
+                   dark_file=None,
+                   deadpix_file=None,
+                   prefilter_file=None,
+                   distortion_file=None,
+                   niter=10,
+                   true_continuum=True,
+                   double_pass=True,
+                   #save_fringes=False,
                    verbose=True):
 
-    if verbose:
-        print('start processing')
+    '''
+    :param files: list of input files paths or path to input files folder
+    :param folder_out: output folder path
+    :param dark_file: path to dark signal file
+    :param deadpix_file: path to dead pixels file
+    :param prefilter_file: path to prefilter file
+    :param distortion_file: path to distortion file
+    :param niter: int, number of iterations
+    :param true_continuum: bool, whether to filter out ARs or not
+    :param double_pass: bool
+    :param verbose: bool, verbosity parameter
+    :return: None
+    '''
 
     if isinstance(files, str):
+        if verbose:
+            print('looking for files in folder:', files)
         files = sorted(glob.glob(files + '/*.fits*'))
 
     if verbose:
-        print('found', len(files), 'files')
-        print('first file is:', files[0])
-        print('last file is:', files[-1])
+        print('found', len(files), 'input files')
+        print('first input file is:', files[0])
+        print('last input file is:', files[-1])
 
     if verbose:
         print('reading and preprocessing the data')
 
+    if dark_file is None:
+        raise Exception('dark signal file not specified')
+    if deadpix_file is None:
+        raise Exception('dead pixels file not specified')
+    if prefilter_file is None:
+        raise Exception('prefilter file not specified')
+    if distortion_file is None:
+        raise Exception('distortion file not specified')
+
+    if verbose:
+        print('dark signal file is:', dark_file)
+        print('dead pixels file is:', deadpix_file)
+        print('prefilter file is:', prefilter_file)
+        print('distortion file is:', distortion_file)
+
     datas = []
     headers = []
 
-    for file in files:
+    for i, file in enumerate(files):
         with fits.open(file) as hdul:
             header = hdul[0].header
             data = hdul[0].data
+
+        if i == 0:
+            pmp_temperature = int(header['FPMPTSP1'])
+            fg_temperature = int(header['FGH_TSP1'])
+            dsun_au = header['DSUN_AU']
+            contposn = header['CONTPOSN']
+            wvlns = read_wavelengths(header)
+
+            if verbose:
+                print('distance is:', dsun_au, 'AU')
+                print('PMP SP temperature is:', pmp_temperature, 'C')
+                print('FG SP temperature is:', fg_temperature, 'C')
+                print('continuum position is:', contposn)
+                print('wavelengths are:', wvlns, 'A')
 
         datas += [preprocess(data, header,
                              dark_file=dark_file,
                              deadpix_file=deadpix_file,
                              prefilter_file=prefilter_file,
                              distortion_file=distortion_file,
+                             true_continuum=true_continuum,
                              verbose=verbose)]
         headers += [header]
     datas = np.array(datas)
 
-    temperature = int(headers[0]['FPMPTSP1'])
     if verbose:
-        print('the PMP SP temperature is:', temperature)
-        print('the FG SP temperature is:', int(headers[0]['FGH_TSP1']))
-        print('the continuum position is:', headers[0]['CONTPOSN'])
+        print('calculating transmittance')
+
+    transmittance = calc_transmittance(datas[:, 0], niter=niter)
 
     if verbose:
-        print('calculating and correcting transmittance')
+        print('correcting data for transmittance')
 
-    transmittance = calc_transmittance(datas[:, 2], niter=niter)
     datas /= np.nan_to_num(transmittance, nan=1)
 
     if verbose:
         print('realigning and demodulating the data')
         print('modulation matrix is:')
-        print(modulation_matrix(temperature))
+        print(modulation_matrix(pmp_temperature))
 
     for i in range(len(datas)):
         datas[i] = realign(datas[i])
-        datas[i] = demodulate(datas[i], temperature=temperature)
+        datas[i] = demodulate(datas[i], temperature=pmp_temperature)
 
     if verbose:
         print('calculating ghost reflection center')
@@ -71,7 +118,7 @@ def calc_flatfield(files, folder_out='',
     xr, yr = calc_reflection_center(datas[:, 0], datas[:, 1])
 
     if verbose:
-        print('the reflection center is:', xr, yr)
+        print('reflection center is:', xr, yr)
 
     if verbose:
         print('calculating instrumental polarization')
@@ -90,16 +137,43 @@ def calc_flatfield(files, folder_out='',
 
     flats = remove_fringes(flats)
 
+    #fringes = flats - remove_fringes(flats)
+    #flats -= fringes
+
+    flats = np.append(np.ones((1, 2048, 2048)), flats, axis=0)
+    #fringes = np.append(np.zeros((1, 2048, 2048)), fringes, axis=0)
+    ghosts = np.append(np.linalg.norm(ghosts, axis=0, keepdims=True) * 3, ghosts, axis=0) ###
+
+    if double_pass:
+        if verbose:
+            print('removing ghosts from data and recalculating transmittance')
+
+        datas[:,0] -= reflect(gaussian_filter(datas[:,0], 8, axes=(-2,-1)), xr, yr) * ghosts[0]
+        transmittance *= calc_transmittance(datas[:, 0], niter=niter)
+
+    if verbose:
+        print('normalizing transmittance')
+
+    transmittance /= np.nanmedian(transmittance[512:1536, 512:1536])
+
     if verbose:
         print('modulating flatfield')
 
-    norm = modulation_matrix(temperature)[:, 0]
+    norm = modulation_matrix(pmp_temperature)[:, 0]
+    flats = modulate(flats, temperature=pmp_temperature) / norm.reshape(-1, 1, 1)
+    #fringes = modulate(fringes, temperature=pmp_temperature)
+    ghosts = modulate(ghosts, temperature=pmp_temperature)
+    flats *= transmittance
 
-    flats = np.append(np.ones((1, 2048, 2048)), flats, axis=0) * transmittance
-    ghosts = np.append(np.zeros((1, 2048, 2048)), ghosts, axis=0)
+    if verbose:
+        print('filling missing values')
 
-    flats = modulate(flats, temperature=temperature) / norm.reshape(-1, 1, 1)
-    ghosts = modulate(ghosts, temperature=temperature)
+    mask = np.isnan(flats[0])
+    mask = binary_dilation(mask, iterations=3)
+
+    flats[:,mask] = 1.
+    #fringes[:,mask] = 0.
+    #ghosts[:,mask] = 0.
 
     if verbose:
         print('distorting flatfield')
@@ -107,37 +181,60 @@ def calc_flatfield(files, folder_out='',
     s = np.load(distortion_file)
     xu, yu = s['xu'], s['yu']
 
-    flats = np.nan_to_num(flats, nan=1)
-    ghosts = np.nan_to_num(ghosts, nan=0)
-
     flats = undistort(flats, headers[0], xu, yu, cval=1)
+    #fringes = undistort(fringes, headers[0], xu, yu)
     ghosts = undistort(ghosts, headers[0], xu, yu)
 
     if verbose:
-        print('saving the result')
+        print('clipping flatfield')
+
+    flats = flats.clip(0.1, 2)
+
+    if verbose:
+        print('saving result')
 
     flat_file = folder_out + '/' + generate_filename(files[0], 'flat')
     ghost_file = folder_out + '/' + generate_filename(files[0], 'ghost')
+    #fringes_file = folder_out + '/' + generate_filename(files[0], 'fringes')
 
     clone_fits(files[0], flat_file, flats)
+
+    if verbose:
+        print('flatfield map saved to file:', flat_file)
+
     clone_fits(files[0], ghost_file, ghosts)
 
     if verbose:
-        print('the output flatfield file is:', flat_file)
-        print('the output ghost file is:', ghost_file)
+        print('ghost map saved to file:', ghost_file)
+
+    #if save_fringes:
+    #    clone_fits(files[0], fringes_file, fringes)
+
+    #    if verbose:
+    #        print('fringes map saved to file:', fringes_file)
 
     if verbose:
         print('done')
 
+    #return datas
+
 
 def preprocess(data, header,
-               dark_file='', deadpix_file='', prefilter_file='', distortion_file='', verbose=True):
+               dark_file=None,
+               deadpix_file=None,
+               prefilter_file=None,
+               distortion_file=None,
+               true_continuum=True,
+               verbose=True):
 
     with fits.open(dark_file) as hdul:
         dark = hdul[0].data
 
     with fits.open(deadpix_file) as hdul:
         deadpix = hdul[0].data[:,::-1].astype(bool)
+
+    dark = crop(dark, header)
+    deadpix = crop(deadpix, header)
 
     s = np.load(distortion_file)
     xd, yd = s['xd'], s['yd']
@@ -147,7 +244,12 @@ def preprocess(data, header,
 
     data -= 0.4 * dark ###
     data = correct_prefilter(data, header, prefilter_file)
-    data = calc_continuum(data, wv, continuum=cpos)
+
+    if true_continuum:
+        data = calc_continuum(data, wv, continuum=cpos)
+    else:
+        data = data.reshape(6, 4, 2048, 2048)[cpos]
+
     data[:,~deadpix] = np.nan
     data = fill_holes(data)
     data = np.nan_to_num(data)
@@ -211,8 +313,7 @@ def calc_polarization(I, Q, xr, yr, degree=2, sigma=30, niter=3):
     b = np.percentile(I[0], 99.9)
     threshold = a + (b - a) * 0.1
 
-    I_ = reflect(I, xr, yr)
-    I_ = gaussian_filter(I_, 8, axes=(-2,-1))
+    I_ = reflect(gaussian_filter(I, 8, axes=(-2,-1)), xr, yr)
 
     a = np.mean(I ** 2, axis=0)
     b = np.mean(I * I_, axis=0)
