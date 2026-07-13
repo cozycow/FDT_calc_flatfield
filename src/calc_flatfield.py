@@ -136,7 +136,6 @@ def calc_flatfield(files, folder_out='',
         print('removing fringes')
 
     flats = remove_fringes(flats)
-
     #fringes = flats - remove_fringes(flats)
     #flats -= fringes
 
