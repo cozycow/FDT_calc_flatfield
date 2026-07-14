@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
 import glob
@@ -14,9 +15,8 @@ def calc_flatfield(files, folder_out='',
                    prefilter_file=None,
                    distortion_file=None,
                    niter=10,
-                   true_continuum=True,
                    double_pass=True,
-                   #save_fringes=False,
+                   quicklook=True,
                    verbose=True):
 
     '''
@@ -88,7 +88,7 @@ def calc_flatfield(files, folder_out='',
                              deadpix_file=deadpix_file,
                              prefilter_file=prefilter_file,
                              distortion_file=distortion_file,
-                             true_continuum=true_continuum,
+                             wavelength='true_continuum',
                              verbose=verbose)]
         headers += [header]
     datas = np.array(datas)
@@ -109,8 +109,9 @@ def calc_flatfield(files, folder_out='',
         print(modulation_matrix(pmp_temperature))
 
     for i in range(len(datas)):
-        datas[i] = realign(datas[i])
-        datas[i] = demodulate(datas[i], temperature=pmp_temperature)
+        datas[i] = preprocess(datas[i], header, _realign=True, _demodulate=True)
+        #datas[i] = realign(datas[i])
+        #datas[i] = demodulate(datas[i], temperature=pmp_temperature)
 
     if verbose:
         print('calculating ghost reflection center')
@@ -136,11 +137,8 @@ def calc_flatfield(files, folder_out='',
         print('removing fringes')
 
     flats = remove_fringes(flats)
-    #fringes = flats - remove_fringes(flats)
-    #flats -= fringes
 
     flats = np.append(np.ones((1, 2048, 2048)), flats, axis=0)
-    #fringes = np.append(np.zeros((1, 2048, 2048)), fringes, axis=0)
     ghosts = np.append(np.linalg.norm(ghosts, axis=0, keepdims=True) * 3, ghosts, axis=0) ###
 
     if double_pass:
@@ -160,7 +158,6 @@ def calc_flatfield(files, folder_out='',
 
     norm = modulation_matrix(pmp_temperature)[:, 0]
     flats = modulate(flats, temperature=pmp_temperature) / norm.reshape(-1, 1, 1)
-    #fringes = modulate(fringes, temperature=pmp_temperature)
     ghosts = modulate(ghosts, temperature=pmp_temperature)
     flats *= transmittance
 
@@ -171,8 +168,6 @@ def calc_flatfield(files, folder_out='',
     mask = binary_dilation(mask, iterations=3)
 
     flats[:,mask] = 1.
-    #fringes[:,mask] = 0.
-    #ghosts[:,mask] = 0.
 
     if verbose:
         print('distorting flatfield')
@@ -181,7 +176,6 @@ def calc_flatfield(files, folder_out='',
     xu, yu = s['xu'], s['yu']
 
     flats = undistort(flats, headers[0], xu, yu, cval=1)
-    #fringes = undistort(fringes, headers[0], xu, yu)
     ghosts = undistort(ghosts, headers[0], xu, yu)
 
     if verbose:
@@ -194,7 +188,7 @@ def calc_flatfield(files, folder_out='',
 
     flat_file = folder_out + '/' + generate_filename(files[0], 'flat')
     ghost_file = folder_out + '/' + generate_filename(files[0], 'ghost')
-    #fringes_file = folder_out + '/' + generate_filename(files[0], 'fringes')
+    quicklook_file = folder_out + '/' + generate_filename(files[0], extension='.png')
 
     clone_fits(files[0], flat_file, flats)
 
@@ -206,53 +200,91 @@ def calc_flatfield(files, folder_out='',
     if verbose:
         print('ghost map saved to file:', ghost_file)
 
-    #if save_fringes:
-    #    clone_fits(files[0], fringes_file, fringes)
+    if quicklook:
+        if verbose:
+            print('making quicklook image')
 
-    #    if verbose:
-    #        print('fringes map saved to file:', fringes_file)
+        make_quicklook(files, quicklook_file,
+                       dark_file=dark_file,
+                       prefilter_file=prefilter_file,
+                       deadpix_file=deadpix_file,
+                       flatfield_file=flat_file,
+                       ghost_file=ghost_file,
+                       wavelength='continuum',
+                       #_realign=True,
+                       _demodulate=True)
+
+        if verbose:
+            print('quicklook image saved to file:', quicklook_file)
 
     if verbose:
         print('done')
 
-    #return datas
-
 
 def preprocess(data, header,
                dark_file=None,
-               deadpix_file=None,
                prefilter_file=None,
+               flatfield_file=None,
+               deadpix_file=None,
+               ghost_file=None,
                distortion_file=None,
-               true_continuum=True,
+               wavelength=None,
+               _realign=False,
+               _demodulate=False,
                verbose=True):
 
-    with fits.open(dark_file) as hdul:
-        dark = hdul[0].data
-
-    with fits.open(deadpix_file) as hdul:
-        deadpix = hdul[0].data[:,::-1].astype(bool)
-
-    dark = crop(dark, header)
-    deadpix = crop(deadpix, header)
-
-    s = np.load(distortion_file)
-    xd, yd = s['xd'], s['yd']
-
+    nx, ny = data.shape[-2:]
     wv = read_wavelengths(header)
     cpos = int(header['CONTPOS']) - 1
+    pmp_temperature = int(header['FPMPTSP1'])
+    xr, yr = reflection_point_predict(header)
 
-    data -= 0.4 * dark ###
-    data = correct_prefilter(data, header, prefilter_file)
+    if dark_file is not None:
+        with fits.open(dark_file) as hdul:
+            dark = hdul[0].data
+        dark = crop(dark, header)
+        data -= 0.4 * crop(dark, header)  ###
 
-    if true_continuum:
-        data = calc_continuum(data, wv, continuum=cpos)
-    else:
-        data = data.reshape(6, 4, 2048, 2048)[cpos]
+    if prefilter_file is not None:
+        data = correct_prefilter(data, header, prefilter_file)
 
-    data[:,~deadpix] = np.nan
-    data = fill_holes(data)
-    data = np.nan_to_num(data)
-    data = undistort(data, header, xd, yd)
+    if wavelength is not None:
+        if wavelength == 'true_continuum':
+            data = calc_continuum(data, wv, continuum=cpos)
+        elif wavelength == 'continuum':
+            data = data.reshape(6, 4, nx, ny)[cpos]
+        else:
+            data = data.reshape(6, 4, nx, ny)[wavelength]
+
+    if flatfield_file is not None:
+        with fits.open(flatfield_file) as hdul:
+            flat = hdul[0].data
+        data = data / crop(flat, header)
+
+    if deadpix_file is not None:
+        with fits.open(deadpix_file) as hdul:
+            deadpix = hdul[0].data[:, ::-1].astype(bool)
+        deadpix = crop(deadpix, header)
+        data[...,~deadpix] = np.nan
+        data = fill_holes(data)
+        data = np.nan_to_num(data)
+
+    if ghost_file is not None:
+        with fits.open(ghost_file) as hdul:
+            ghost = hdul[0].data
+        reflection = reflect(gaussian_filter(data[0], 8), xr, yr)
+        data -= reflection * crop(ghost, header)
+
+    if distortion_file is not None:
+        s = np.load(distortion_file)
+        xd, yd = s['xd'], s['yd']
+        data = undistort(data, header, xd, yd)
+
+    if _realign:
+        data = realign(data)
+
+    if _demodulate:
+        data = demodulate(data, temperature=pmp_temperature)
 
     return data.astype(np.float32)
 
@@ -389,4 +421,47 @@ def remove_fringes(data, sigma=0.01, degree=7):
         return temp + fit
     else:
         return np.array([remove_fringes(temp, sigma=sigma, degree=degree) for temp in data])
+
+
+def make_quicklook(files, file_out, **kwargs):
+    plt.ioff()
+
+    fig, axs = plt.subplots(4, len(files), figsize=(18,8))
+
+    for i, file in enumerate(files):
+
+        with fits.open(file) as hdul:
+            header = hdul[0].header
+            data = hdul[0].data
+
+        data = preprocess(data, header, **kwargs)
+
+        a, b = np.nanpercentile(data[0], 5), np.nanpercentile(data[0], 95)
+
+        axs[0,i].imshow(data[0], origin='lower', cmap='gray', vmin=a, vmax=b)
+        axs[1,i].imshow(data[1], origin='lower', cmap='gray', vmin=-1e-3 * (b - a), vmax=1e-3 * (b - a))
+        axs[2,i].imshow(data[2], origin='lower', cmap='gray', vmin=-1e-3 * (b - a), vmax=1e-3 * (b - a))
+        axs[3,i].imshow(data[3], origin='lower', cmap='gray', vmin=-1e-3 * (b - a), vmax=1e-3 * (b - a))
+
+        axs[0,i].set_title(file.split('_')[-1].split('.')[0])
+
+        for j in range(3):
+            axs[j,i].set_xticks([])
+            axs[j,i].set_xticklabels([])
+
+        if i == 0:
+            axs[0,i].set_ylabel('I')
+            axs[1,i].set_ylabel('Q')
+            axs[2,i].set_ylabel('U')
+            axs[3,i].set_ylabel('V')
+        else:
+            for j in range(4):
+                axs[j,i].set_yticks([])
+                axs[j,i].set_yticklabels([])
+
+    plt.tight_layout()
+    plt.savefig(file_out)
+    plt.close(fig)
+
+    plt.ion()
 

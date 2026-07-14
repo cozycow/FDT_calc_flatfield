@@ -19,12 +19,12 @@ def clone_fits(file_in, file_out, data):
         hdul.writeto(file_out, overwrite=True)
 
 
-def generate_filename(file, prefix='ilam'):
+def generate_filename(file, prefix='ilam', extension='.fits'):
     from datetime import datetime
 
     temp = file.split('/')[-1].split('.')[0].split('_')
     return '_'.join(['-'.join(temp[2].split('-')[:2]) + '-' + prefix, temp[3],
-                     'V' + datetime.today().strftime('%Y%m%d%H%M') + temp[4][-1],  temp[-1]]) + '.fits'
+                     'V' + datetime.today().strftime('%Y%m%d%H%M') + temp[4][-1],  temp[-1]]) + extension
 
 
 def crop(image, header=None, x1=None, x2=None, y1=None, y2=None, **kwargs):
