@@ -8,7 +8,6 @@ from scipy.ndimage import gaussian_filter
 from utils import *
 
 
-
 def calc_prefilter(files, folder_out='', dark_file='',
                    T0=61, wv0=6173, k_T=0.030, gamma=0.053, delta=0.01, binning=8,
                    verbose=True):
@@ -18,7 +17,6 @@ def calc_prefilter(files, folder_out='', dark_file='',
         if verbose:
             print('looking for files in folder:', files)
         files = sorted(glob.glob(files + '/*.fits*'))
-
 
     if verbose:
         print('found', len(files), 'input files')
@@ -89,8 +87,9 @@ def calc_prefilter(files, folder_out='', dark_file='',
     wv_max = np.round(np.max(wvs_), 2)
     wv = np.arange(wv_min + delta, wv_max - delta / 2, delta)
 
-    Q = datas / line_profile(np.expand_dims(wvs, (2,3)), np.expand_dims(Shift, (0,1)) + k_V * np.expand_dims(Vs, (1,2,3)), Sigma, gamma, Depth)
-    #QQQQ = Q.copy()
+    Q = datas / line_profile(np.expand_dims(wvs, (2,3)),
+                             np.expand_dims(Shift, (0,1)) + k_V * np.expand_dims(Vs, (1,2,3)),
+                             Sigma, gamma, Depth)
 
     Q = np.array([interpolate(Q[i], wvs_[i], np.expand_dims(wv, (1,2))) for i in range(3)])
     W = np.array([1 - np.cos(2 * np.pi * (wv.clip(wvs_[i,0], wvs_[i,-1]) - wvs_[i,0]) / (wvs_[i,-1] - wvs_[i,0])).reshape(-1,1,1) for i in range(3)])
@@ -139,7 +138,7 @@ def calc_prefilter(files, folder_out='', dark_file='',
     if verbose:
         print('done')
 
-    #return wvs, QQQQ
+    return wv, Q
 
 
 def line_profile(x, x0, sigma, gamma, depth):
