@@ -122,7 +122,7 @@ def calc_prefilter(files, folder_out='', dark_file='',
     if verbose:
         print('writing prefilter file')
 
-    prefilter_file = path.join(folder_out, generate_filename(files[0], prefix='pref', extension='.txt'))
+    prefilter_file = path.join(folder_out, generate_filename(files[0], prefix='prefilter', extension='.txt'))
     with open(prefilter_file, 'w') as file:
         file.write(f'# Temperature {T0}\n')
         file.write(f'# Tuning constant {k_T}\n')
