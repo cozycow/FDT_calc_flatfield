@@ -90,6 +90,8 @@ def calc_prefilter(files, folder_out='', dark_file='',
     wv = np.arange(wv_min + delta, wv_max - delta / 2, delta)
 
     Q = datas / line_profile(np.expand_dims(wvs, (2,3)), np.expand_dims(Shift, (0,1)) + k_V * np.expand_dims(Vs, (1,2,3)), Sigma, gamma, Depth)
+    #QQQQ = Q.copy()
+
     Q = np.array([interpolate(Q[i], wvs_[i], np.expand_dims(wv, (1,2))) for i in range(3)])
     W = np.array([1 - np.cos(2 * np.pi * (wv.clip(wvs_[i,0], wvs_[i,-1]) - wvs_[i,0]) / (wvs_[i,-1] - wvs_[i,0])).reshape(-1,1,1) for i in range(3)])
     Q = np.sum(Q * W, axis=0) / np.sum(W, axis=0)
@@ -137,6 +139,8 @@ def calc_prefilter(files, folder_out='', dark_file='',
     if verbose:
         print('done')
 
+    #return wvs, QQQQ
+
 
 def line_profile(x, x0, sigma, gamma, depth):
     from scipy.special import voigt_profile
@@ -158,7 +162,7 @@ def residuals(args, wavelengths, profiles, temperatures, velocities, k_T, gamma,
 
     f1 = line_profile(x1, shift + k_V * V1, sigma, gamma, depth)
     f2 = line_profile(x2, shift + k_V * V2, sigma, gamma, depth)
-    f3 = line_profile(x3, shift + k_V * V2, sigma, gamma, depth)
+    f3 = line_profile(x3, shift + k_V * V3, sigma, gamma, depth)
 
     y21 = np.interp(x1 - dx1, x2 - dx2, y2 / f2, left=np.nan, right=np.nan)
     y32 = np.interp(x2 - dx2, x3 - dx3, y3 / f3, left=np.nan, right=np.nan)
