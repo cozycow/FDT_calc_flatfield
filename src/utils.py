@@ -39,6 +39,22 @@ def crop(image, header=None, x1=None, x2=None, y1=None, y2=None, **kwargs):
         return image
 
 
+def rebin(data, k, axis=None):
+    if len(data.shape) == 2:
+        nx, ny = data.shape
+        if axis == 0:
+            return np.mean(np.reshape(data[:nx // k * k, :], (nx // k, -1, ny)), axis=-2)
+        elif axis == 1:
+            return np.mean(np.reshape(data[:, :ny // k * k], (nx, ny // k, -1)), axis=-1)
+        else:
+            return rebin(rebin(data, k, axis=0), k, axis=1)
+    else:
+        out = []
+        for i in range(len(data)):
+            out.append(rebin(data[i], k, axis=axis))
+        return np.array(out)
+
+
 def undistort(data, header, xd, yd, **kwargs):
     def crop_grid(xi, yi, header):
         nx, ny = header['NAXIS2'], header['NAXIS1']

@@ -1,3 +1,4 @@
+from os import path
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
@@ -186,9 +187,9 @@ def calc_flatfield(files, folder_out='',
     if verbose:
         print('saving result')
 
-    flat_file = folder_out + '/' + generate_filename(files[0], 'flat')
-    ghost_file = folder_out + '/' + generate_filename(files[0], 'ghost')
-    quicklook_file = folder_out + '/' + generate_filename(files[0], extension='.png')
+    flat_file = path.join(folder_out, generate_filename(files[0], 'flat'))
+    ghost_file = path.join(folder_out, generate_filename(files[0], 'ghost'))
+    quicklook_file = path.join(folder_out, generate_filename(files[0], extension='.png'))
 
     clone_fits(files[0], flat_file, flats)
 
@@ -436,7 +437,7 @@ def make_quicklook(files, file_out, **kwargs):
 
         data = preprocess(data, header, **kwargs)
 
-        a, b = np.nanpercentile(data[0], 5), np.nanpercentile(data[0], 95)
+        a, b = np.nanpercentile(data[0], 0.1), np.nanpercentile(data[0], 99.9)
 
         axs[0,i].imshow(data[0], origin='lower', cmap='gray', vmin=a, vmax=b)
         axs[1,i].imshow(data[1], origin='lower', cmap='gray', vmin=-1e-3 * (b - a), vmax=1e-3 * (b - a))
