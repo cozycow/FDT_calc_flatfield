@@ -28,7 +28,6 @@ def calc_flatfield(files, folder_out='',
     :param prefilter_file: path to prefilter file
     :param distortion_file: path to distortion file
     :param niter: int, number of iterations
-    :param true_continuum: bool, whether to filter out ARs or not
     :param double_pass: bool
     :param verbose: bool, verbosity parameter
     :return: None

@@ -273,3 +273,58 @@ def interpolate(f, x, x_new):
     fa = np.take_along_axis(f, idx - 1, axis=0)
     fb = np.take_along_axis(f, idx, axis=0)
     return fa * a + fb * b
+
+
+def get_wv_shift(data, cpos=5, pol=0, delta_wv=0.069, log=True):
+    temp = data.copy().reshape((6, -1, data.shape[-2], data.shape[-1]))[:,pol]
+
+    if log:
+        temp = -np.log((temp[cpos] - np.delete(temp, cpos, axis=0)).clip(1))
+    else:
+        temp = np.delete(temp, cpos, axis=0)
+
+    t = np.argmin(temp, axis=0)
+    l, a, r = np.take_along_axis(temp, np.array([(t - 1) % 5, t, (t + 1) % 5]), axis=0)
+    b, c = (r - l) / 2, (l + r) - 2 * a
+
+    with np.errstate(invalid='ignore'):
+        return (t - 2 - b / c) * delta_wv
+
+
+def kll(data, shifts, weights, niter=20, sigma=1,
+        verbose=False, **kwargs):
+
+    F = np.zeros_like(data[0])
+    C0 = shifts[0]
+    for iter in range(niter):
+
+        # calculating averaged image in the position of first image
+        D = np.zeros_like(F)
+        W = np.zeros_like(F)
+        for Di, Ci, Wi in zip(data, shifts, weights):
+            Di_ = roll_float(Di - F, *(C0 - Ci), **kwargs)
+            Wi_ = roll_float(Wi, *(C0 - Ci), **kwargs)
+
+            W += Wi_
+            with np.errstate(invalid='ignore'):
+                D += np.nan_to_num((Di_ - D) * Wi_ / W)
+
+        F_ = np.zeros_like(F)
+        W = np.zeros_like(F)
+
+        for Di, Ci, Wi in zip(data, shifts, weights):
+            Di_ = Di - roll_float(D, *(Ci - C0), **kwargs)
+
+            delta = np.sqrt(np.mean(Wi * (Di_ - F) ** 2) / np.mean(Wi))
+            Wi_ = Wi / np.abs(Di_ - F).clip(delta * sigma)
+
+            W += Wi_
+            with np.errstate(invalid='ignore'):
+                F_ += np.nan_to_num((Di_ - F_) * Wi_ / W)
+
+        F = np.nan_to_num(F_)
+
+    if verbose:
+        print('')
+
+    return F
