@@ -91,7 +91,7 @@ def calc_cavity(files, folder_out='',
                              verbose=verbose)]
         headers += [header]
     datas = np.array(datas)
-    shifts = np.nan_to_num([get_wv_shift(data, cpos=5, delta_wv=0.069) for data in datas])
+    shifts = np.nan_to_num([get_wv_shift(data, contpos=5, delta_wv=0.069) for data in datas])
     images = datas[:, -1]
 
     centers = []

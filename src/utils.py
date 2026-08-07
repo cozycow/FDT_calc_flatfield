@@ -152,22 +152,39 @@ def remove_freq(image, kx, ky, h, thr, expand=False, nx0=2048, ny0=2048, **kwarg
     return np.real(fft)[:nx, :ny] + high
 
 
-def calc_continuum(data, x, n_comp=101, sigma=0.04, gamma=0.05, continuum=-1, lam=1e-6, shift=0, return_coeff=False, **kwargs):
+def calc_continuum(data, header, n_comp=101, sigma=0.04, gamma=0.05, lam=1e-6, shift=0, return_coeff=False, **kwargs):
     from scipy.special import voigt_profile
 
-    n = len(x)
-    x_min = np.min(np.delete(x, continuum) if continuum is not None else x) + shift
-    x_max = np.max(np.delete(x, continuum) if continuum is not None else x) + shift
+    if 'wavelengths' in kwargs:
+        wavelengths = kwargs['wavelengths']
+    elif 'WAVENUM' in header:
+        nwv = header['WAVENUM']
+        wavelengths = []
+        for i in range(nwv):
+            wavelengths.append(header[f'WAVELN{i + 1:02d}'])
+        wavelengths = np.array(wavelengths)
+    else:
+        raise ValueError('Wavelengths not provided')
+
+    if 'contpos' in kwargs:
+        contpos = kwargs['contpos']
+    elif 'CONTPOS' in header:
+        contpos = header['CONTPOS'] - 1
+    else:
+        raise ValueError('Continuum position not provided')
+
+    n = len(wavelengths)
+    x_min = np.min(np.delete(wavelengths, contpos)) + shift
+    x_max = np.max(np.delete(wavelengths, contpos)) + shift
     dx = (x_max - x_min) / (n_comp - 1)
     xc = (x_min + x_max) / 2
-    x_ = np.arange(x_min, x_max + dx / 2, dx, dtype=np.float32)
+    x = np.arange(x_min, x_max + dx / 2, dx, dtype=np.float32)
 
-    A = voigt_profile(np.expand_dims(x, axis=1) - np.expand_dims(x_, axis=0), sigma, gamma, dtype=np.float32)
+    A = voigt_profile(np.expand_dims(wavelengths, axis=1) - np.expand_dims(x, axis=0), sigma, gamma, dtype=np.float32)
     A0 = np.mean(A, axis=0, keepdims=True)
     A = A - A0
 
-    W = np.diag(voigt_profile(x_ - xc, sigma, gamma) ** 2)
-
+    W = np.diag(voigt_profile(x - xc, sigma, gamma) ** 2)
     q = 1 / n - A0 @ W @ A.T @ np.linalg.inv(A @ W @ A.T + lam * np.identity(n)) @ (np.identity(n) - 1 / n)
 
     if return_coeff:
@@ -275,56 +292,39 @@ def interpolate(f, x, x_new):
     return fa * a + fb * b
 
 
-def get_wv_shift(data, cpos=5, pol=0, delta_wv=0.069, log=True):
-    temp = data.copy().reshape((6, -1, data.shape[-2], data.shape[-1]))[:,pol]
+def get_wv_shift(data, header, pol=0, log=True, **kwargs):
+    if 'wavelengths' in kwargs:
+        wavelengths = kwargs['wavelengths']
+    elif 'WAVENUM' in header:
+        nwv = header['WAVENUM']
+        wavelengths = []
+        for i in range(nwv):
+            wavelengths.append(header[f'WAVELN{i + 1:02d}'])
+        wavelengths = np.array(wavelengths)
+    else:
+        raise ValueError('Wavelengths not provided')
+
+    if 'contpos' in kwargs:
+        contpos = kwargs['contpos']
+    elif 'CONTPOS' in header:
+        contpos = header['CONTPOS'] - 1
+    else:
+        raise ValueError('Continuum position not provided')
+
+    wavelengths = np.delete(wavelengths, contpos)
+    delta_wv = np.mean(wavelengths[1:] - wavelengths[:-1])
+
+    temp = data.copy().reshape((6, -1, data.shape[-2], data.shape[-1]))[:, pol]
 
     if log:
-        temp = -np.log((temp[cpos] - np.delete(temp, cpos, axis=0)).clip(1))
+        temp = -np.log((temp[contpos] - np.delete(temp, contpos, axis=0)).clip(1))
     else:
-        temp = np.delete(temp, cpos, axis=0)
+        temp = np.delete(temp, contpos, axis=0)
 
     t = np.argmin(temp, axis=0)
     l, a, r = np.take_along_axis(temp, np.array([(t - 1) % 5, t, (t + 1) % 5]), axis=0)
     b, c = (r - l) / 2, (l + r) - 2 * a
 
     with np.errstate(invalid='ignore'):
-        return (t - 2 - b / c) * delta_wv
+        return np.nan_to_num(t - 2 - b / c) * delta_wv
 
-
-def kll(data, shifts, weights, niter=20, sigma=1,
-        verbose=False, **kwargs):
-
-    F = np.zeros_like(data[0])
-    C0 = shifts[0]
-    for iter in range(niter):
-
-        # calculating averaged image in the position of first image
-        D = np.zeros_like(F)
-        W = np.zeros_like(F)
-        for Di, Ci, Wi in zip(data, shifts, weights):
-            Di_ = roll_float(Di - F, *(C0 - Ci), **kwargs)
-            Wi_ = roll_float(Wi, *(C0 - Ci), **kwargs)
-
-            W += Wi_
-            with np.errstate(invalid='ignore'):
-                D += np.nan_to_num((Di_ - D) * Wi_ / W)
-
-        F_ = np.zeros_like(F)
-        W = np.zeros_like(F)
-
-        for Di, Ci, Wi in zip(data, shifts, weights):
-            Di_ = Di - roll_float(D, *(Ci - C0), **kwargs)
-
-            delta = np.sqrt(np.mean(Wi * (Di_ - F) ** 2) / np.mean(Wi))
-            Wi_ = Wi / np.abs(Di_ - F).clip(delta * sigma)
-
-            W += Wi_
-            with np.errstate(invalid='ignore'):
-                F_ += np.nan_to_num((Di_ - F_) * Wi_ / W)
-
-        F = np.nan_to_num(F_)
-
-    if verbose:
-        print('')
-
-    return F
