@@ -241,7 +241,7 @@ def calc_flatfield(files, folder_out='',
                        prefilter_file=prefilter_file,
                        deadpix_file=deadpix_file,
                        flatfield_file=flat_file,
-                       ghost_file=ghost_file,)
+                       ghost_file=ghost_file)
 
         if verbose:
             print('quicklook image saved to file:', quicklook_file)
@@ -275,19 +275,18 @@ def preprocess(file,
     if dark_file is not None:
         with fits.open(dark_file) as hdul:
             dark = hdul[0].data
-        dark = crop(dark, header)
         data -= 0.4 * crop(dark, header)  ###
 
     if prefilter_file is not None:
         data = correct_prefilter(data, header, prefilter_file)
 
-    if true_continuum:
-        data[cpos] = calc_continuum(data, header)
-
     if flatfield_file is not None:
         with fits.open(flatfield_file) as hdul:
             flat = hdul[0].data
         data = data / crop(flat, header)
+
+    if true_continuum:
+        data[cpos] = calc_continuum(data, header)
 
     if deadpix_file is not None:
         with fits.open(deadpix_file) as hdul:
@@ -300,7 +299,7 @@ def preprocess(file,
     if ghost_file is not None:
         with fits.open(ghost_file) as hdul:
             ghost = hdul[0].data
-        reflection = reflect(gaussian_filter(data[0], 8), xr, yr)
+        reflection = reflect(gaussian_filter(data[cpos,0], 8), xr, yr)
         data -= reflection * crop(ghost, header)
 
     if distortion_file is not None:
