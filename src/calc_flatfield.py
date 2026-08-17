@@ -16,8 +16,7 @@ def calc_flatfield(files, folder_out='',
                    deadpix_file=None,
                    prefilter_file=None,
                    distortion_file=None,
-                   niter=10,
-                   double_pass=True,
+                   niter=100,
                    quicklook=True,
                    verbose=True):
 
@@ -29,7 +28,6 @@ def calc_flatfield(files, folder_out='',
     :param prefilter_file: path to prefilter file
     :param distortion_file: path to distortion file
     :param niter: int, number of iterations
-    :param double_pass: bool
     :param verbose: bool, verbosity parameter
     :return: None
     '''
@@ -64,14 +62,19 @@ def calc_flatfield(files, folder_out='',
 
     datas = []
     shifts = []
-    headers = []
+    centers = []
 
     for i, file in enumerate(files):
-        with fits.open(file) as hdul:
-            header = hdul[0].header
-            data = hdul[0].data
+        data, header = preprocess(file,
+                                 dark_file=dark_file,
+                                 deadpix_file=deadpix_file,
+                                 prefilter_file=prefilter_file,
+                                 distortion_file=distortion_file,
+                                 true_continuum=True,
+                                 verbose=verbose)
 
         if i == 0:
+            header_ = header
             pmp_temperature = int(header['FPMPTSP1'])
             fg_temperature = int(header['FGH_TSP1'])
             dsun_au = header['DSUN_AU']
@@ -86,28 +89,15 @@ def calc_flatfield(files, folder_out='',
                 print('continuum position is:', contposn)
                 print('wavelengths are:', wvlns, 'A')
 
-        data = preprocess(data, header,
-                         dark_file=dark_file,
-                         deadpix_file=deadpix_file,
-                         prefilter_file=prefilter_file,
-                         distortion_file=distortion_file,
-                         true_continuum=True,
-                         verbose=verbose)
+        xc = header['CRPIX2'] - 1
+        yc = header['CRPIX1'] - 1
 
         shifts += [get_wv_shift(data, header)]
         datas += [data[contpos].copy()]
-        headers += [header]
+        centers += [(xc, yc)]
 
     datas = np.array(datas)
     shifts = np.array(shifts)
-
-    if verbose:
-        print('calculating disk centers')
-
-    centers = []
-    for image in datas[:,0]:
-        xc, yc, rsun = find_center(image)
-        centers.append([xc, yc])
     centers = np.array(centers)
 
     if verbose:
@@ -122,18 +112,17 @@ def calc_flatfield(files, folder_out='',
     if verbose:
         print('calculating cavity')
 
-    cavity = kll(shifts, centers, datas[:,0].clip(0), niter=20, sigma=1e-3, vmin=-0.1, vmax=0.1)
-    cavity[mask] = 0
-
-    #cavity_file = path.join(folder_out, generate_filename(files[0], 'cavity'))
-    #clone_fits(files[0], cavity_file, cavity)
-
-    #return
+    cavity = kll(shifts, centers, datas[:,0].clip(0),
+                 niter=niter, sigma=1e-3, vmin=-0.2, vmax=0.2)
+    cavity[mask] = np.nan
+    cavity -= np.nanmedian(cavity[512:1536, 512:1536])
+    cavity = np.nan_to_num(cavity)
 
     if verbose:
         print('calculating transmittance')
 
-    transmittance = kll(datas[:,0], centers, datas[:,0].clip(0), niter=niter, sigma=100, slope=True, vmin=0.1, vmax=2)
+    transmittance = kll(datas[:,0], centers, datas[:,0].clip(0),
+                        niter=niter, sigma=100, slope=True, vmin=0.1, vmax=2)
     transmittance[mask] = 1
 
     if verbose:
@@ -148,7 +137,7 @@ def calc_flatfield(files, folder_out='',
 
     for i in range(len(datas)):
         datas[i] = realign(datas[i])
-        datas[i] = demodulate(datas[i], temperature=pmp_temperature)
+        datas[i] = demodulate(datas[i], header_)
 
     if verbose:
         print('calculating ghost reflection center')
@@ -170,8 +159,6 @@ def calc_flatfield(files, folder_out='',
     flats = np.array(flats)
     ghosts = np.array(ghosts)
 
-    #print(np.mean(flats[...,512:1536, 512:1536], axis=(-2,-1)))
-
     if verbose:
         print('removing fringes')
 
@@ -180,37 +167,36 @@ def calc_flatfield(files, folder_out='',
     flats = np.append(np.ones((1, 2048, 2048)), flats, axis=0)
     ghosts = np.append(np.linalg.norm(ghosts, axis=0, keepdims=True) * 3, ghosts, axis=0) ###
 
-    if double_pass:
-        if verbose:
-            print('removing ghosts from data and recalculating transmittance')
+    if verbose:
+        print('removing ghosts from data and recalculating transmittance')
 
-        datas[:,0] -= reflect(gaussian_filter(datas[:,0], 8, axes=(-2,-1)), xr, yr) * ghosts[0]
-        transmittance *= kll(datas[:,0], centers, datas[:,0].clip(0), niter=niter, sigma=100, slope=True, vmin=0.1, vmax=2)
-        transmittance[mask] = 1.
+    datas[:,0] -= reflect(gaussian_filter(datas[:,0], 8, axes=(-2,-1)), xr, yr) * ghosts[0]
+    transmittance *= kll(datas[:,0], centers, datas[:,0].clip(0),
+                    niter=niter, sigma=100, slope=True, vmin=0.1, vmax=2)
+    transmittance[mask] = np.nan
 
-    #if verbose:
-    #    print('normalizing transmittance')
+    if verbose:
+        print('normalizing transmittance')
 
-    #transmittance_norm = np.nanmedian(transmittance[512:1536, 512:1536])
+    transmittance_norm = np.nanmedian(transmittance[512:1536, 512:1536])
 
-    #if verbose:
-    #    print('transmittance norm is:', transmittance_norm)
+    if verbose:
+        print('transmittance norm is:', transmittance_norm)
 
-    #transmittance /= transmittance_norm
+    transmittance /= transmittance_norm
 
     if verbose:
         print('modulating flatfield')
 
     norm = modulation_matrix(pmp_temperature)[:, 0]
-    flats = modulate(flats, temperature=pmp_temperature) / norm.reshape(-1, 1, 1)
-    ghosts = modulate(ghosts, temperature=pmp_temperature)
+    flats = modulate(flats, header_) / norm.reshape(-1, 1, 1)
+    ghosts = modulate(ghosts, header_)
     flats *= transmittance
 
     if verbose:
         print('filling missing values')
 
     flats = np.nan_to_num(flats, nan=1.)
-    flats[:,mask] = 1.
     flats = flats.clip(0.1, 2)
 
     if verbose:
@@ -219,9 +205,9 @@ def calc_flatfield(files, folder_out='',
     s = np.load(distortion_file)
     xu, yu = s['xu'], s['yu']
 
-    flats = undistort(flats, headers[0], xu, yu, cval=1)
-    ghosts = undistort(ghosts, headers[0], xu, yu)
-    cavity = undistort(cavity, headers[0], xu, yu)
+    flats = undistort(flats, header_, xu, yu, cval=1)
+    ghosts = undistort(ghosts, header_, xu, yu)
+    cavity = undistort(cavity, header_, xu, yu)
 
     if verbose:
         print('saving result')
@@ -255,8 +241,7 @@ def calc_flatfield(files, folder_out='',
                        prefilter_file=prefilter_file,
                        deadpix_file=deadpix_file,
                        flatfield_file=flat_file,
-                       ghost_file=ghost_file,
-                       _demodulate=True)
+                       ghost_file=ghost_file,)
 
         if verbose:
             print('quicklook image saved to file:', quicklook_file)
@@ -265,7 +250,7 @@ def calc_flatfield(files, folder_out='',
         print('done')
 
 
-def preprocess(data, header,
+def preprocess(file,
                dark_file=None,
                prefilter_file=None,
                flatfield_file=None,
@@ -273,14 +258,16 @@ def preprocess(data, header,
                ghost_file=None,
                distortion_file=None,
                true_continuum=False,
-               _realign=False,
-               _demodulate=False,
+               folder_out='',
+               to_file=False,
                verbose=True):
 
+    with fits.open(file) as hdul:
+        header = hdul[0].header
+        data = hdul[0].data
+
     nx, ny = data.shape[-2:]
-    wv = read_wavelengths(header)
     cpos = int(header['CONTPOS']) - 1
-    pmp_temperature = int(header['FPMPTSP1'])
     xr, yr = reflection_point_predict(header)
 
     data = data.reshape(6, 4, nx, ny)
@@ -321,16 +308,20 @@ def preprocess(data, header,
         xd, yd = s['xd'], s['yd']
         data = undistort(data, header, xd, yd)
 
-    if _realign:
-        data = realign(data)
+    xc, yc, rsun = find_center(data[cpos,0])
+    header['CRPIX2'] = round(xc + 1, 4)
+    header['CRPIX1'] = round(yc + 1, 4)
+    header['CDELT1'] = round(header['RSUN_ARC'] / rsun, 6)
+    header['CDELT2'] = round(header['RSUN_ARC'] / rsun, 6)
 
-    if _demodulate:
-        data = demodulate(data, temperature=pmp_temperature)
+    if to_file:
+        file_out = path.join(folder_out, generate_filename(file))
+        clone_fits(file, file_out, data.astype(np.float32), header)
+    else:
+        return data.astype(np.float32), header
 
-    return data.astype(np.float32)
 
-
-def calc_polarization(I, Q, xr, yr, degree=2, sigma=30, niter=3):
+def calc_polarization(I, Q, xr, yr, degree=2, sigma=30, niter=10):
 
     a = np.percentile(I[0], 0.1)
     b = np.percentile(I[0], 99.9)
@@ -421,14 +412,10 @@ def make_quicklook(files, file_out, **kwargs):
     fig, axs = plt.subplots(4, len(files), figsize=(18,8))
 
     for i, file in enumerate(files):
-
-        with fits.open(file) as hdul:
-            header = hdul[0].header
-            data = hdul[0].data
-
+        data, header = preprocess(file, **kwargs)
         cpos = int(header['CONTPOS']) - 1
-        data = preprocess(data, header, **kwargs)
         data = data[cpos]
+        data = demodulate(data, header)
 
         a, b = np.nanpercentile(data[0], 0.1), np.nanpercentile(data[0], 99.9)
 

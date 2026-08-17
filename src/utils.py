@@ -13,9 +13,11 @@ def read_wavelengths(header):
     return np.array(wv)
 
 
-def clone_fits(file_in, file_out, data):
+def clone_fits(file_in, file_out, data, header=None):
     with fits.open(file_in) as hdul:
         hdul[0].data = data.astype(np.float32)
+        if header is not None:
+            hdul[0].header = header
         hdul.writeto(file_out, overwrite=True)
 
 
@@ -253,7 +255,8 @@ def modulation_matrix(temperature=45):
                          [1.0008, -0.38781, 0.91443, 0.13808]])
 
 
-def modulate(data, temperature=45, inv=False):
+def modulate(data, header, inv=False):
+    temperature = int(header['FPMPTSP1'])
     O = modulation_matrix(temperature)
 
     if inv:
@@ -265,8 +268,8 @@ def modulate(data, temperature=45, inv=False):
     return data_.transpose((3,2,0,1)).reshape(data.shape)
 
 
-def demodulate(data, temperature=45):
-    return modulate(data, temperature=temperature, inv=True)
+def demodulate(data, header):
+    return modulate(data, header, inv=True)
 
 
 def reflection_point_predict(header):

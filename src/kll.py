@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.ndimage import map_coordinates
 
 
 def kll(datas, shifts, weights,
@@ -16,34 +15,27 @@ def kll(datas, shifts, weights,
     for iter in range(niter):
         D = step(forward(datas, shifts, weights, F, **kwargs), slope=slope)
         F = step(backward(datas, shifts, weights, D, **kwargs), slope=slope, guess=F, sigma=sigma).clip(vmin, vmax)
-
     return F
 
 
-def roll_float(data, dx, dy, **kwargs):
-    if len(data.shape) == 2:
-        nx, ny = data.shape
-        xi, yi = np.mgrid[:nx,:ny].astype(np.float32)
-        xi -= dx
-        yi -= dy
-        return map_coordinates(data, (xi, yi), **kwargs)
-    else:
-        out = []
-        for i in range(len(data)):
-            out.append(roll_float(data[i], dx, dy, **kwargs))
-        return np.array(out)
+def roll(data, dx, dy, cval=0):
+    nx, ny = data.shape[-2:]
+    dx_, dy_ = int(round(dx)), int(round(dy))
+    data_ = np.zeros_like(data) + cval
+    data_[...,max(dx_,0):min(nx+dx_,nx), max(dy_,0):min(ny+dy_,ny)] = data[...,max(-dx_,0):min(nx-dx_,nx), max(-dy_,0):min(ny-dy_,ny)].copy()
+    return data_
 
 
 def forward(datas, shifts, weights, reference, **kwargs):
     for data, shift, weight in zip(datas, shifts, weights):
-        yield (roll_float(data, *(shifts[0] - shift), **kwargs),
-               roll_float(reference, *(shifts[0] - shift), **kwargs),
-               roll_float(weight, *(shifts[0] - shift), **kwargs))
+        yield (roll(data, *(shifts[0] - shift), **kwargs),
+               roll(reference, *(shifts[0] - shift), **kwargs),
+               roll(weight, *(shifts[0] - shift), **kwargs))
 
 def backward(datas, shifts, weights, reference, **kwargs):
     for data, shift, weight in zip(datas, shifts, weights):
         yield (data,
-               roll_float(reference, *(shift - shifts[0]), **kwargs),
+               roll(reference, *(shift - shifts[0]), **kwargs),
                weight)
 
 def step(data, slope=False, guess=None, sigma=None):
