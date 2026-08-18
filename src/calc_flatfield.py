@@ -4,11 +4,10 @@ import numpy as np
 from astropy.io import fits
 import glob
 from scipy.ndimage import gaussian_filter, binary_dilation
-
-from prefilter_correction import correct_prefilter
-from limb_fitting import *
 from utils import *
+from limb_fitting import *
 from kll import kll
+from preprocess import preprocess
 
 
 def calc_flatfield(files, folder_out='',
@@ -66,12 +65,13 @@ def calc_flatfield(files, folder_out='',
 
     for i, file in enumerate(files):
         data, header = preprocess(file,
-                                 dark_file=dark_file,
-                                 deadpix_file=deadpix_file,
-                                 prefilter_file=prefilter_file,
-                                 distortion_file=distortion_file,
-                                 true_continuum=True,
-                                 verbose=verbose)
+                                  dark_file=dark_file,
+                                  deadpix_file=deadpix_file,
+                                  prefilter_file=prefilter_file,
+                                  distortion_file=distortion_file,
+                                  true_continuum=True,
+                                  calc_dc=True,
+                                  verbose=verbose)
 
         if i == 0:
             header_ = header
@@ -152,7 +152,7 @@ def calc_flatfield(files, folder_out='',
 
     flats, ghosts = [], []
     for i in range(1, 4):
-        flat, ghost = calc_polarization(datas[:, 0], datas[:, i], xr, yr)
+        flat, ghost = calc_polarization(datas[:, 0], datas[:, i], xr, yr, niter=niter)
         flats += [flat]
         ghosts += [ghost]
 
@@ -250,77 +250,7 @@ def calc_flatfield(files, folder_out='',
         print('done')
 
 
-def preprocess(file,
-               dark_file=None,
-               prefilter_file=None,
-               flatfield_file=None,
-               deadpix_file=None,
-               ghost_file=None,
-               distortion_file=None,
-               true_continuum=False,
-               folder_out='',
-               to_file=False,
-               verbose=True):
-
-    with fits.open(file) as hdul:
-        header = hdul[0].header
-        data = hdul[0].data
-
-    nx, ny = data.shape[-2:]
-    cpos = int(header['CONTPOS']) - 1
-    xr, yr = reflection_point_predict(header)
-
-    data = data.reshape(6, 4, nx, ny)
-
-    if dark_file is not None:
-        with fits.open(dark_file) as hdul:
-            dark = hdul[0].data
-        data -= 0.4 * crop(dark, header)  ###
-
-    if prefilter_file is not None:
-        data = correct_prefilter(data, header, prefilter_file)
-
-    if flatfield_file is not None:
-        with fits.open(flatfield_file) as hdul:
-            flat = hdul[0].data
-        data = data / crop(flat, header)
-
-    if true_continuum:
-        data[cpos] = calc_continuum(data, header)
-
-    if deadpix_file is not None:
-        with fits.open(deadpix_file) as hdul:
-            deadpix = hdul[0].data[:, ::-1].astype(bool)
-        deadpix = crop(deadpix, header)
-        data[...,~deadpix] = np.nan
-        data = fill_holes(data)
-        data = np.nan_to_num(data)
-
-    if ghost_file is not None:
-        with fits.open(ghost_file) as hdul:
-            ghost = hdul[0].data
-        reflection = reflect(gaussian_filter(data[cpos,0], 8), xr, yr)
-        data -= reflection * crop(ghost, header)
-
-    if distortion_file is not None:
-        s = np.load(distortion_file)
-        xd, yd = s['xd'], s['yd']
-        data = undistort(data, header, xd, yd)
-
-    xc, yc, rsun = find_center(data[cpos,0])
-    header['CRPIX2'] = round(xc + 1, 4)
-    header['CRPIX1'] = round(yc + 1, 4)
-    header['CDELT1'] = round(header['RSUN_ARC'] / rsun, 6)
-    header['CDELT2'] = round(header['RSUN_ARC'] / rsun, 6)
-
-    if to_file:
-        file_out = path.join(folder_out, generate_filename(file))
-        clone_fits(file, file_out, data.astype(np.float32), header)
-    else:
-        return data.astype(np.float32), header
-
-
-def calc_polarization(I, Q, xr, yr, degree=2, sigma=30, niter=10):
+def calc_polarization(I, Q, xr, yr, degree=2, sigma=5, niter=100):
 
     a = np.percentile(I[0], 0.1)
     b = np.percentile(I[0], 99.9)

@@ -21,6 +21,18 @@ def clone_fits(file_in, file_out, data, header=None):
         hdul.writeto(file_out, overwrite=True)
 
 
+def get_scale(img_data):
+    if img_data is not None:
+        fmt, rng = img_data['PHI_IMG_format'], img_data['PHI_IMG_maxRange']
+
+        scale = rng[-1] / rng[0]
+        if fmt[-1] != 'IMGFMT_24_8':
+            scale *= 256
+        return scale
+    else:
+        return None
+
+
 def generate_filename(file, prefix='ilam', extension='.fits'):
     from datetime import datetime
 
