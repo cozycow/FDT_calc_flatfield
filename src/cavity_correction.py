@@ -88,7 +88,7 @@ def get_wv_shift(data, header, pol=0, log=True, **kwargs):
         return np.nan_to_num(t - 2 - b / c) * delta_wv
 
 
-def generate_cavity_matrix(shift, wv, sigma=0.04, gamma=0.05, contpos=-1,
+def generate_cavity_matrix(shift, wv, sigma=0.043, gamma=0.053, contpos=-1,
                            fit=True, spread=0.07, acc=1e-3, lam=1e-6, **kwargs):
     from scipy.special import voigt_profile
 
