@@ -16,7 +16,9 @@ def preprocess(file,
                deadpix_file=None,
                ghost_file=None,
                distortion_file=None,
-               calc_dc=False,
+               _find_center=False,
+               _realign=False,
+               _demodulate=False,
                folder_out='',
                to_file=False,
                verbose=True):
@@ -76,12 +78,18 @@ def preprocess(file,
         xd, yd = s['xd'], s['yd']
         data = undistort(data, header_data, xd, yd)
 
-    if calc_dc:
+    if _realign:
+        data = realign(data)
+
+    if _find_center:
         xc, yc, rsun = find_center(data[cpos,0])
         header_data['CRPIX2'] = round(xc + 1, 4)
         header_data['CRPIX1'] = round(yc + 1, 4)
         header_data['CDELT1'] = round(header_data['RSUN_ARC'] / rsun, 6)
         header_data['CDELT2'] = round(header_data['RSUN_ARC'] / rsun, 6)
+
+    if _demodulate:
+        data = demodulate(data, header_data)
 
     if to_file:
         file_out = path.join(folder_out, generate_filename(file))

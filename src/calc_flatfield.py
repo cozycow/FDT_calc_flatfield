@@ -69,7 +69,7 @@ def calc_flatfield(files, folder_out='',
                                   deadpix_file=deadpix_file,
                                   prefilter_file=prefilter_file,
                                   distortion_file=distortion_file,
-                                  calc_dc=True,
+                                  _find_center=True,
                                   verbose=verbose)
 
         if i == 0:
