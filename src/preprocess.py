@@ -16,7 +16,7 @@ def preprocess(file,
                deadpix_file=None,
                ghost_file=None,
                distortion_file=None,
-               true_continuum=False,
+               #true_continuum=False,
                calc_dc=False,
                folder_out='',
                to_file=False,
@@ -79,8 +79,8 @@ def preprocess(file,
         xd, yd = s['xd'], s['yd']
         data = undistort(data, header_data, xd, yd)
 
-    if true_continuum:
-        data[cpos] = calc_continuum(data, header_data)
+    #if true_continuum:
+    #    data[cpos] = calc_continuum(data, header_data)
 
     if calc_dc:
         xc, yc, rsun = find_center(data[cpos,0])

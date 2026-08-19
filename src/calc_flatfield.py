@@ -69,7 +69,6 @@ def calc_flatfield(files, folder_out='',
                                   deadpix_file=deadpix_file,
                                   prefilter_file=prefilter_file,
                                   distortion_file=distortion_file,
-                                  true_continuum=True,
                                   calc_dc=True,
                                   verbose=verbose)
 
@@ -93,7 +92,7 @@ def calc_flatfield(files, folder_out='',
         yc = header['CRPIX1'] - 1
 
         shifts += [get_wv_shift(data, header)]
-        datas += [data[contpos].copy()]
+        datas += [calc_continuum(data, header)]
         centers += [(xc, yc)]
 
     datas = np.array(datas)
