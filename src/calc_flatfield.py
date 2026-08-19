@@ -77,7 +77,6 @@ def calc_flatfield(files, folder_out='',
             pmp_temperature = int(header['FPMPTSP1'])
             fg_temperature = int(header['FGH_TSP1'])
             dsun_au = header['DSUN_AU']
-            contpos = int(header['CONTPOS']) - 1
             contposn = header['CONTPOSN']
             wvlns = read_wavelengths(header)
 

@@ -3,8 +3,8 @@ import numpy as np
 from astropy.io import fits
 from prefilter_correction import correct_prefilter
 from cavity_correction import correct_cavity
+from ghost_correction import correct_ghost
 from utils import *
-from scipy.ndimage import gaussian_filter
 from limb_fitting import find_center
 
 
@@ -16,7 +16,6 @@ def preprocess(file,
                deadpix_file=None,
                ghost_file=None,
                distortion_file=None,
-               #true_continuum=False,
                calc_dc=False,
                folder_out='',
                to_file=False,
@@ -49,15 +48,20 @@ def preprocess(file,
     if prefilter_file is not None:
         data = correct_prefilter(data, header_data, prefilter_file)
 
-    if cavity_file is not None:
-        with fits.open(cavity_file) as hdul:
-            cavity = hdul[0].data
-        data = correct_cavity(data, header_data, cavity)
-
     if flatfield_file is not None:
         with fits.open(flatfield_file) as hdul:
             flat = hdul[0].data
         data = data / crop(flat, header_data)
+
+    if ghost_file is not None:
+        with fits.open(ghost_file) as hdul:
+            ghost = hdul[0].data
+        data = correct_ghost(data, header_data, ghost)
+
+    if cavity_file is not None:
+        with fits.open(cavity_file) as hdul:
+            cavity = hdul[0].data
+        data = correct_cavity(data, header_data, cavity)
 
     if deadpix_file is not None:
         with fits.open(deadpix_file) as hdul:
@@ -67,20 +71,10 @@ def preprocess(file,
         data = fill_holes(data)
         data = np.nan_to_num(data)
 
-    if ghost_file is not None:
-        with fits.open(ghost_file) as hdul:
-            ghost = hdul[0].data
-        xr, yr = reflection_point_predict(header_data)
-        reflection = reflect(gaussian_filter(data[cpos,0], 8), xr, yr)
-        data -= reflection * crop(ghost, header_data)
-
     if distortion_file is not None:
         s = np.load(distortion_file)
         xd, yd = s['xd'], s['yd']
         data = undistort(data, header_data, xd, yd)
-
-    #if true_continuum:
-    #    data[cpos] = calc_continuum(data, header_data)
 
     if calc_dc:
         xc, yc, rsun = find_center(data[cpos,0])

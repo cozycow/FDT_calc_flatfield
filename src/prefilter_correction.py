@@ -101,9 +101,6 @@ def interpolate(f, x, x_new):
 
 
 def interpolate_prefilter(coeff, wv_prefilter, wv_data, nx=2048, ny=2048, cavity=None, header=None):
-    if cavity is None:
-        cavity = np.zeros((nx, ny), dtype=np.float32)
-
     x, y = np.mgrid[-nx // 2 + 0.5:nx // 2 + 0.5, -ny // 2 + 0.5:ny // 2 + 0.5].astype(np.float32)
     x /= nx / 2
     y /= ny / 2
@@ -113,7 +110,10 @@ def interpolate_prefilter(coeff, wv_prefilter, wv_data, nx=2048, ny=2048, cavity
 
     prefilter = []
     for wv in wv_data:
-        p = interpolate(np.expand_dims(coeff, (-1,-2)), wv_prefilter, np.expand_dims(wv - crop(cavity, header=header), (0,1)))[0]
+        if cavity is None:
+            p = interpolate(coeff, wv_prefilter, np.array([[wv]]))[0]
+        else:
+            p = interpolate(np.expand_dims(coeff, (-1,-2)), wv_prefilter, np.expand_dims(wv - crop(cavity, header=header), (0,1)))[0]
         q = polyval2d(x, y, p)
         prefilter.append(q)
     return np.array(prefilter)

@@ -3,9 +3,9 @@ import numpy as np
 
 def correct_cavity(data, header, cavity, **kwargs):
     '''
-    :param data: numpy array of shape (24,nx,ny) or (6,4,nx,ny)  containing modulated intensities
+    :param data: numpy array of shape (24,nx,ny) or (6,4,nx,ny) containing modulated intensities
     :param header: fits header
-    :param cavity: cavity map of shape (nx,ny) ## assuming that it is already cropped
+    :param cavity: cavity map of shape (nx,ny)
     :return: resampled data
     '''
 

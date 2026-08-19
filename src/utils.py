@@ -344,16 +344,5 @@ def get_wv_shift(data, header, pol=0, log=True, **kwargs):
         return np.nan_to_num(t - 2 - b / c) * delta_wv
 
 
-def voigt_profile(z, sigma, gamma, modified=False, acc=1e-3, truncate=4):
-    if isinstance(z, np.ndarray):
-        return np.array([voigt_profile(z_, sigma, gamma, modified=modified, acc=acc, truncate=truncate) for z_ in z])
-    else:
-        limit = truncate * (sigma + gamma)
-        x = np.arange(-limit,limit + acc / 2, acc)
-        f = np.exp(-x ** 2 / 2 / sigma ** 2)
-        g = 1 / (1 + ((z - x) / gamma) ** 2)
-        if modified:
-            return np.trapezoid(f * g * (1 - g), x)
-        else:
-            return np.trapezoid(f * g, x)
+
 
