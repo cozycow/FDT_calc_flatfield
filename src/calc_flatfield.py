@@ -4,10 +4,11 @@ import numpy as np
 from astropy.io import fits
 import glob
 from scipy.ndimage import gaussian_filter, binary_dilation
+from crosstalk_correction import calc_continuum
 from utils import *
 from limb_fitting import *
 from kll import kll
-from preprocess import preprocess
+from processing import process
 
 
 def calc_flatfield(files, folder_out='',
@@ -64,13 +65,13 @@ def calc_flatfield(files, folder_out='',
     centers = []
 
     for i, file in enumerate(files):
-        data, header = preprocess(file,
-                                  dark_file=dark_file,
-                                  deadpix_file=deadpix_file,
-                                  prefilter_file=prefilter_file,
-                                  distortion_file=distortion_file,
-                                  _find_center=True,
-                                  verbose=verbose)
+        data, header = process(file,
+                               dark_file=dark_file,
+                               deadpix_file=deadpix_file,
+                               prefilter_file=prefilter_file,
+                               distortion_file=distortion_file,
+                               _find_center=True,
+                               verbose=verbose)
 
         if i == 0:
             header_ = header
@@ -239,7 +240,10 @@ def calc_flatfield(files, folder_out='',
                        prefilter_file=prefilter_file,
                        deadpix_file=deadpix_file,
                        flatfield_file=flat_file,
-                       ghost_file=ghost_file)
+                       ghost_file=ghost_file,
+                       #_realign=True,
+                       _demodulate=True,
+                       _correct_fringes=True)
 
         if verbose:
             print('quicklook image saved to file:', quicklook_file)
@@ -322,6 +326,8 @@ def calc_reflection_center(I, Q):
 
 
 def remove_fringes(data, sigma=0.01, degree=7):
+    from fringe_correction import remove_freq
+
     if len(data.shape) == 2:
         temp = data.copy()
         fit = polyfit2d(temp.clip(-sigma, sigma), degree=degree)
@@ -339,10 +345,9 @@ def make_quicklook(files, file_out, **kwargs):
     fig, axs = plt.subplots(4, len(files), figsize=(18,8))
 
     for i, file in enumerate(files):
-        data, header = preprocess(file, **kwargs)
+        data, header = process(file, **kwargs)
         cpos = int(header['CONTPOS']) - 1
         data = data[cpos]
-        data = demodulate(data, header)
 
         a, b = np.nanpercentile(data[0], 0.1), np.nanpercentile(data[0], 99.9)
 

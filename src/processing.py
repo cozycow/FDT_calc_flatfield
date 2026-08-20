@@ -4,24 +4,28 @@ from astropy.io import fits
 from prefilter_correction import correct_prefilter
 from cavity_correction import correct_cavity
 from ghost_correction import correct_ghost
+from fringe_correction import correct_fringes
+from crosstalk_correction import correct_crosstalk
 from utils import *
-from limb_fitting import find_center
+from limb_fitting import find_center, realign
 
 
-def preprocess(file,
-               dark_file=None,
-               prefilter_file=None,
-               cavity_file=None,
-               flatfield_file=None,
-               deadpix_file=None,
-               ghost_file=None,
-               distortion_file=None,
-               _find_center=False,
-               _realign=False,
-               _demodulate=False,
-               folder_out='',
-               to_file=False,
-               verbose=True):
+def process(file,
+            dark_file=None,
+            prefilter_file=None,
+            cavity_file=None,
+            flatfield_file=None,
+            deadpix_file=None,
+            ghost_file=None,
+            distortion_file=None,
+            _find_center=False,
+            _realign=False,
+            _demodulate=False,
+            _correct_fringes=False,
+            _correct_crosstalk=False,
+            folder_out='',
+            to_file=False,
+            verbose=True):
 
     with fits.open(file) as hdul:
         data = hdul[0].data
@@ -90,6 +94,12 @@ def preprocess(file,
 
     if _demodulate:
         data = demodulate(data, header_data)
+
+    if _correct_fringes:
+        data = correct_fringes(data)
+
+    if _correct_crosstalk:
+        data = correct_crosstalk(data, header_data)
 
     if to_file:
         file_out = path.join(folder_out, generate_filename(file))

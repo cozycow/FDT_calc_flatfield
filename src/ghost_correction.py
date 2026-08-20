@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.ndimage import gaussian_filter, map_coordinates
+from scipy.ndimage import gaussian_filter
 
 
 def correct_ghost(data, header, ghost, **kwargs):
@@ -55,6 +55,8 @@ def crop(image, header=None, x1=None, x2=None, y1=None, y2=None, **kwargs):
 
 
 def roll_float(data, dx, dy, **kwargs):
+    from scipy.ndimage import map_coordinates
+
     if len(data.shape) == 2:
         nx, ny = data.shape
         xi, yi = np.mgrid[:nx,:ny].astype(np.float32)

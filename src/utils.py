@@ -104,21 +104,6 @@ def reflect(data, xr, yr, **kwargs):
     return roll_float(data[...,::-1, ::-1], 2 * int(round(xr)) - nx + 1, 2 * int(round(yr)) - ny + 1, **kwargs)
 
 
-def realign(data, x0=None, y0=None, **kwargs):
-    from limb_fitting import find_center
-    data_ = data.copy().reshape((-1, data.shape[-2], data.shape[-1]))
-
-    if x0 is None and y0 is None:
-        x0, y0, _ = find_center(data_[0], **kwargs)
-
-    for i in range(len(data_)):
-        xc, yc, _ = find_center(data_[i], **kwargs)
-        dx, dy = x0 - xc, y0 - yc
-        data_[i] = roll_float(data_[i], dx, dy)
-
-    return data_.reshape(data.shape)
-
-
 def fill_holes(data):
     if len(data.shape) == 2:
         mask = np.isnan(data)
@@ -133,79 +118,6 @@ def fill_holes(data):
         for i in range(len(data)):
             out.append(fill_holes(data[i]))
         return np.array(out)
-
-
-def remove_freq(image, kx, ky, h, thr, expand=False, nx0=2048, ny0=2048, **kwargs):
-    nx, ny = image.shape
-    image_ = np.where(np.isnan(image) + (np.abs(image) > thr), 0, image)
-    high = image - image_
-
-    # expand the image to the full size
-    if expand:
-        temp = np.zeros((nx0, ny0)) + np.nanmedian(image)
-        temp[:nx, :ny] = image_
-        image_ = temp
-
-    nx_, ny_ = image_.shape
-    kx_, ky_ = (np.round(np.array(kx) * nx_ / nx0).astype(int) + nx_ // 2,
-                np.round(np.array(ky) * ny_ / ny0).astype(int) + ny_ // 2)
-    h_ = int(np.ceil(h * nx_ / nx0))
-
-    # apply Fourier transform and shift the zero-frequency component to the center of the spectrum
-    fft = np.fft.fft2(image_)
-    fft = np.fft.fftshift(fft)
-
-    # remove the frequencies and their negative counterparts
-    for kxi, kyi in zip(kx_, ky_):
-        fft[kxi - h_:kxi + h_ + 1, kyi - h_:kyi + h_ + 1] = 0
-        fft[-kxi - h_:-kxi + h_ + 1, -kyi - h_:-kyi + h_ + 1] = 0
-
-    # shift the zero frequency back and apply inverse Fourier transform
-    fft = np.fft.ifftshift(fft)
-    fft = np.fft.ifft2(fft)
-    return np.real(fft)[:nx, :ny] + high
-
-
-def calc_continuum(data, header, n_comp=101, sigma=0.04, gamma=0.05, lam=1e-6, shift=0, return_coeff=False, **kwargs):
-    from scipy.special import voigt_profile
-
-    if 'wavelengths' in kwargs:
-        wavelengths = kwargs['wavelengths']
-    elif 'WAVENUM' in header:
-        nwv = header['WAVENUM']
-        wavelengths = []
-        for i in range(nwv):
-            wavelengths.append(header[f'WAVELN{i + 1:02d}'])
-        wavelengths = np.array(wavelengths)
-    else:
-        raise ValueError('Wavelengths not provided')
-
-    if 'contpos' in kwargs:
-        contpos = kwargs['contpos']
-    elif 'CONTPOS' in header:
-        contpos = header['CONTPOS'] - 1
-    else:
-        raise ValueError('Continuum position not provided')
-
-    n = len(wavelengths)
-    x_min = np.min(np.delete(wavelengths, contpos)) + shift
-    x_max = np.max(np.delete(wavelengths, contpos)) + shift
-    dx = (x_max - x_min) / (n_comp - 1)
-    xc = (x_min + x_max) / 2
-    x = np.arange(x_min, x_max + dx / 2, dx, dtype=np.float32)
-
-    A = voigt_profile(np.expand_dims(wavelengths, axis=1) - np.expand_dims(x, axis=0), sigma, gamma, dtype=np.float32)
-    A0 = np.mean(A, axis=0, keepdims=True)
-    A = A - A0
-
-    W = np.diag(voigt_profile(x - xc, sigma, gamma) ** 2)
-    q = 1 / n - A0 @ W @ A.T @ np.linalg.inv(A @ W @ A.T + lam * np.identity(n)) @ (np.identity(n) - 1 / n)
-
-    if return_coeff:
-        return q[0]
-    else:
-        nx, ny = data.shape[-2:]
-        return np.linalg.tensordot(data.reshape(n,-1,nx,ny), q[0], axes=(0, 0))
 
 
 def polyterms2d(x, y, degree=1):
@@ -284,18 +196,6 @@ def demodulate(data, header):
     return modulate(data, header, inv=True)
 
 
-def reflection_point_predict(header):
-    px = [1.63114715e-06, 6.72511045e-03, 9.60448053e+02]
-    py = [ 4.61830880e-06, -6.85005911e-03,  9.77508840e+02]
-
-    r_sun = header['RSUN_ARC']
-    dx, dy = header['PXBEG2'] - 1, header['PXBEG1'] - 1
-
-    xr = np.polyval(px, r_sun) - dx
-    yr = np.polyval(py, r_sun) - dy
-    return xr, yr
-
-
 def interpolate(f, x, x_new):
     idx = np.searchsorted(x, x_new).clip(1, len(x) - 1)
     xa, xb = x[idx - 1], x[idx]
@@ -342,7 +242,3 @@ def get_wv_shift(data, header, pol=0, log=True, **kwargs):
 
     with np.errstate(invalid='ignore'):
         return np.nan_to_num(t - 2 - b / c) * delta_wv
-
-
-
-

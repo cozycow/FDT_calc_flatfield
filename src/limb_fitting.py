@@ -65,3 +65,33 @@ def fitnp(x, y):
     xc, yc = -q[1] / q[0], -q[2] / q[0]
     r = np.sqrt(xc ** 2 + yc ** 2 + 2 / q[0])
     return xc * s + mx, yc * s + my, r * s
+
+
+def roll_float(data, dx, dy, **kwargs):
+    from scipy.ndimage import map_coordinates
+
+    if len(data.shape) == 2:
+        nx, ny = data.shape
+        xi, yi = np.mgrid[:nx,:ny].astype(np.float32)
+        xi -= dx
+        yi -= dy
+        return map_coordinates(data, (xi, yi), **kwargs)
+    else:
+        out = []
+        for i in range(len(data)):
+            out.append(roll_float(data[i], dx, dy, **kwargs))
+        return np.array(out)
+
+
+def realign(data, x0=None, y0=None, **kwargs):
+    data_ = data.copy().reshape((-1, data.shape[-2], data.shape[-1]))
+
+    if x0 is None and y0 is None:
+        x0, y0, _ = find_center(data_[0], **kwargs)
+
+    for i in range(len(data_)):
+        xc, yc, _ = find_center(data_[i], **kwargs)
+        dx, dy = x0 - xc, y0 - yc
+        data_[i] = roll_float(data_[i], dx, dy)
+
+    return data_.reshape(data.shape)
