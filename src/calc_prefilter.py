@@ -1,11 +1,11 @@
 from os import path
 import numpy as np
-import matplotlib.pyplot as plt
-from astropy.io import fits
 import glob
 from scipy.optimize import least_squares
 from scipy.ndimage import gaussian_filter
-from utils import *
+from processing import *
+from fitting import *
+from wavelengths import read_wavelengths
 
 
 def calc_prefilter(files, folder_out='', dark_file='',
@@ -32,19 +32,12 @@ def calc_prefilter(files, folder_out='', dark_file='',
     if verbose:
         print('dark signal file is:', dark_file)
 
-    with fits.open(dark_file) as hdul:
-        dark = hdul[0].data
-
     datas = []
     wvs = []
     Ts = []
     Vs = []
     for file in files:
-        with fits.open(file) as hdul:
-            header = hdul[0].header
-            data = hdul[0].data
-
-        data = data - 0.4 * dark
+        data, header = process(file, dark_file=dark_file)
         data = rebin(data, binning)
         wv = read_wavelengths(header)
 
@@ -182,3 +175,19 @@ def fit_line(wavelengths, profiles, temperatures, velocities, k_T=0.030, gamma=0
     shift, sigma, depth = result.x
     cost = result.cost
     return shift, sigma, depth, cost
+
+
+def rebin(data, k, axis=None):
+    if len(data.shape) == 2:
+        nx, ny = data.shape
+        if axis == 0:
+            return np.mean(np.reshape(data[:nx // k * k, :], (nx // k, -1, ny)), axis=-2)
+        elif axis == 1:
+            return np.mean(np.reshape(data[:, :ny // k * k], (nx, ny // k, -1)), axis=-1)
+        else:
+            return rebin(rebin(data, k, axis=0), k, axis=1)
+    else:
+        out = []
+        for i in range(len(data)):
+            out.append(rebin(data[i], k, axis=axis))
+        return np.array(out)

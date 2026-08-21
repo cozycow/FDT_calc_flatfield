@@ -1,14 +1,17 @@
 from os import path
-import matplotlib.pyplot as plt
 import numpy as np
-from astropy.io import fits
+import matplotlib.pyplot as plt
 import glob
 from scipy.ndimage import gaussian_filter, binary_dilation
 from crosstalk_correction import calc_continuum
-from utils import *
-from limb_fitting import *
+from ghost_correction import reflect
+from classical_estimates import get_wv_shift
+from wavelengths import read_wavelengths
 from kll import kll
-from processing import process
+from limb_fitting import *
+from processing import *
+from modulation import *
+from fitting import *
 
 
 def calc_flatfield(files, folder_out='',
@@ -132,7 +135,7 @@ def calc_flatfield(files, folder_out='',
     if verbose:
         print('realigning and demodulating the data')
         print('modulation matrix is:')
-        print(modulation_matrix(pmp_temperature))
+        print(modulation_matrix(temperature=pmp_temperature))
 
     for i in range(len(datas)):
         datas[i] = realign(datas[i])
@@ -252,6 +255,46 @@ def calc_flatfield(files, folder_out='',
         print('done')
 
 
+def make_quicklook(files, file_out, **kwargs):
+    plt.ioff()
+
+    fig, axs = plt.subplots(4, len(files), figsize=(18,8))
+
+    for i, file in enumerate(files):
+        data, header = process(file, **kwargs)
+        cpos = int(header['CONTPOS']) - 1
+        data = data[cpos]
+
+        a, b = np.nanpercentile(data[0], 0.1), np.nanpercentile(data[0], 99.9)
+
+        axs[0,i].imshow(data[0], origin='lower', cmap='gray', vmin=a, vmax=b)
+        axs[1,i].imshow(data[1], origin='lower', cmap='gray', vmin=-1e-3 * (b - a), vmax=1e-3 * (b - a))
+        axs[2,i].imshow(data[2], origin='lower', cmap='gray', vmin=-1e-3 * (b - a), vmax=1e-3 * (b - a))
+        axs[3,i].imshow(data[3], origin='lower', cmap='gray', vmin=-1e-3 * (b - a), vmax=1e-3 * (b - a))
+
+        axs[0,i].set_title(file.split('_')[-1].split('.')[0])
+
+        for j in range(3):
+            axs[j,i].set_xticks([])
+            axs[j,i].set_xticklabels([])
+
+        if i == 0:
+            axs[0,i].set_ylabel('I')
+            axs[1,i].set_ylabel('Q')
+            axs[2,i].set_ylabel('U')
+            axs[3,i].set_ylabel('V')
+        else:
+            for j in range(4):
+                axs[j,i].set_yticks([])
+                axs[j,i].set_yticklabels([])
+
+    plt.tight_layout()
+    plt.savefig(file_out)
+    plt.close(fig)
+
+    plt.ion()
+
+
 def calc_polarization(I, Q, xr, yr, degree=2, sigma=5, niter=100):
 
     a = np.percentile(I[0], 0.1)
@@ -337,44 +380,4 @@ def remove_fringes(data, sigma=0.01, degree=7):
         return temp + fit
     else:
         return np.array([remove_fringes(temp, sigma=sigma, degree=degree) for temp in data])
-
-
-def make_quicklook(files, file_out, **kwargs):
-    plt.ioff()
-
-    fig, axs = plt.subplots(4, len(files), figsize=(18,8))
-
-    for i, file in enumerate(files):
-        data, header = process(file, **kwargs)
-        cpos = int(header['CONTPOS']) - 1
-        data = data[cpos]
-
-        a, b = np.nanpercentile(data[0], 0.1), np.nanpercentile(data[0], 99.9)
-
-        axs[0,i].imshow(data[0], origin='lower', cmap='gray', vmin=a, vmax=b)
-        axs[1,i].imshow(data[1], origin='lower', cmap='gray', vmin=-1e-3 * (b - a), vmax=1e-3 * (b - a))
-        axs[2,i].imshow(data[2], origin='lower', cmap='gray', vmin=-1e-3 * (b - a), vmax=1e-3 * (b - a))
-        axs[3,i].imshow(data[3], origin='lower', cmap='gray', vmin=-1e-3 * (b - a), vmax=1e-3 * (b - a))
-
-        axs[0,i].set_title(file.split('_')[-1].split('.')[0])
-
-        for j in range(3):
-            axs[j,i].set_xticks([])
-            axs[j,i].set_xticklabels([])
-
-        if i == 0:
-            axs[0,i].set_ylabel('I')
-            axs[1,i].set_ylabel('Q')
-            axs[2,i].set_ylabel('U')
-            axs[3,i].set_ylabel('V')
-        else:
-            for j in range(4):
-                axs[j,i].set_yticks([])
-                axs[j,i].set_yticklabels([])
-
-    plt.tight_layout()
-    plt.savefig(file_out)
-    plt.close(fig)
-
-    plt.ion()
 
