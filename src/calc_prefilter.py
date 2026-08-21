@@ -3,8 +3,8 @@ import numpy as np
 import glob
 from scipy.optimize import least_squares
 from scipy.ndimage import gaussian_filter
-from processing import *
-from fitting import *
+from processing import process, generate_filename
+from fitting import polyfit2d, interpolate
 from wavelengths import read_wavelengths
 
 

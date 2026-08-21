@@ -38,10 +38,9 @@ def process(file,
 
     if 'WAVENUM' not in header_data:
         _ = get_wavelengths(header_data, fg_data, update_header=True)
-
+    scale_data = get_scale(img_data)
 
     cpos = int(header_data['CONTPOS']) - 1
-    scale_data = get_scale(img_data)
     detector_data = header_data['DETECTOR']
 
     nx, ny = data.shape[-2:]
@@ -59,13 +58,13 @@ def process(file,
             dark = dark[:,::-1]
         data -= scale_data / scale_dark * crop(dark, header_data)
 
-    if prefilter_file is not None:
-        data = correct_prefilter(data, header_data, prefilter_file)
-
     if flatfield_file is not None:
         with fits.open(flatfield_file) as hdul:
             flat = hdul[0].data
         data = data / crop(flat, header_data)
+
+    if prefilter_file is not None:
+        data = correct_prefilter(data, header_data, prefilter_file)
 
     if ghost_file is not None:
         with fits.open(ghost_file) as hdul:

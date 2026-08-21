@@ -8,10 +8,10 @@ from ghost_correction import reflect
 from classical_estimates import get_wv_shift
 from wavelengths import read_wavelengths
 from kll import kll
+from fitting import polyfit2d
 from limb_fitting import *
 from processing import *
 from modulation import *
-from fitting import *
 
 
 def calc_flatfield(files, folder_out='',
@@ -190,7 +190,7 @@ def calc_flatfield(files, folder_out='',
     if verbose:
         print('modulating flatfield')
 
-    norm = modulation_matrix(pmp_temperature)[:, 0]
+    norm = modulation_matrix(temperature=pmp_temperature)[:, 0]
     flats = modulate(flats, header_) / norm.reshape(-1, 1, 1)
     ghosts = modulate(ghosts, header_)
     flats *= transmittance
