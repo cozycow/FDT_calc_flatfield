@@ -94,8 +94,8 @@ def calc_flatfield(files, folder_out='',
         xc = header['CRPIX2'] - 1
         yc = header['CRPIX1'] - 1
 
-        shifts += [get_wv_shift(data, header)]
-        datas += [calc_continuum(data, header)]
+        shifts += [np.nan_to_num(get_wv_shift(data, header))]
+        datas += [np.nan_to_num(calc_continuum(data, header))]
         centers += [(xc, yc)]
 
     datas = np.array(datas)
