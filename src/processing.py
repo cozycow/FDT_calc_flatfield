@@ -39,6 +39,8 @@ def process(file,
     if 'WAVENUM' not in header_data:
         _ = get_wavelengths(header_data, fg_data, update_header=True)
     scale_data = get_scale(img_data)
+    if header_data['PHIDTYPE'] == 'alam':  ###########################################################
+        scale_data *= 3
 
     cpos = int(header_data['CONTPOS']) - 1
     detector_data = header_data['DETECTOR']
