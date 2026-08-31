@@ -38,6 +38,7 @@ def calc_prefilter(files, folder_out='', dark_file='',
     Vs = []
     for file in files:
         data, header = process(file, dark_file=dark_file)
+        data = np.squeeze(data)
         data = rebin(data, binning)
         wv = read_wavelengths(header)
 

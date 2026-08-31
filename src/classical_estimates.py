@@ -37,9 +37,10 @@ def get_wv_shift(data, header, pol=0, **kwargs):
     else:
         raise ValueError('Continuum position not provided')
 
-    nx, ny = data.shape[-2:]
-    data_ = data.copy().reshape(6, -1, nx, ny)[:, pol].reshape(6,-1).T
     wv0 = np.mean(np.delete(wavelengths, contpos))
 
-    line_params = fit_pv(data_, wavelengths - wv0, **kwargs)
-    return line_params[:,0].reshape(nx, ny)
+    nx, ny = data.shape[-2:]
+    data_ = data.copy().reshape(6, -1, nx, ny)[:, pol]
+    data_ = np.moveaxis(data_, 0, -1)
+    line_params = fit_pv(-data_, wavelengths - wv0, **kwargs)
+    return line_params[...,0]

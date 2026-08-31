@@ -45,8 +45,8 @@ def process(file,
     cpos = int(header_data['CONTPOS']) - 1
     detector_data = header_data['DETECTOR']
 
-    nx, ny = data.shape[-2:]
-    data = data.reshape(6, 4, nx, ny)
+    nx, ny, nwv = header_data['NAXIS2'], header_data['NAXIS1'], header_data['WAVENUM']
+    data = data.reshape(nwv, -1, nx, ny)
 
     if dark_file is not None:
         with fits.open(dark_file) as hdul:
@@ -152,3 +152,19 @@ def crop(image, header=None, x1=None, x2=None, y1=None, y2=None, **kwargs):
         return image[..., x1:x2, y1:y2]
     else:
         return image
+
+
+def rebin(data, k, axis=None):
+    if len(data.shape) == 2:
+        nx, ny = data.shape
+        if axis == 0:
+            return np.mean(np.reshape(data[:nx // k * k, :], (nx // k, -1, ny)), axis=-2)
+        elif axis == 1:
+            return np.mean(np.reshape(data[:, :ny // k * k], (nx, ny // k, -1)), axis=-1)
+        else:
+            return rebin(rebin(data, k, axis=0), k, axis=1)
+    else:
+        out = []
+        for i in range(len(data)):
+            out.append(rebin(data[i], k, axis=axis))
+        return np.array(out)
