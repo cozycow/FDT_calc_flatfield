@@ -41,6 +41,5 @@ def get_wv_shift(data, header, pol=0, **kwargs):
 
     nx, ny = data.shape[-2:]
     data_ = data.copy().reshape(6, -1, nx, ny)[:, pol]
-    data_ = np.moveaxis(data_, 0, -1)
-    line_params = fit_pv(-data_, wavelengths - wv0, **kwargs)
-    return line_params[...,0]
+    line_params = fit_pv(data_, wavelengths - wv0, axis=0, negative=True, **kwargs)
+    return line_params[0]

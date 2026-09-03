@@ -1,13 +1,13 @@
 import numpy as np
 
 
-def correct_crosstalk(data, header, **kwargs):
+def correct_crosstalk(data, header, thr=100, **kwargs):
     continuum = calc_continuum(data, header, **kwargs)
     data_ = data.copy().reshape(-1,4,data.shape[-2],data.shape[-1])
 
     for i in range(data_.shape[0]):
         for j in range(1,4):
-            data_[i,j] -= continuum[j] / continuum[0].clip(1) * data[i,0]
+            data_[i,j] -= continuum[j] / continuum[0].clip(thr) * data[i,0]
     return data_.reshape(data.shape)
 
 

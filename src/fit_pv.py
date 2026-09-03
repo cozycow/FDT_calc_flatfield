@@ -1,14 +1,20 @@
 import numpy as np
 
 
-def fit_pv(f, x, **kwargs):
-    af, bf = np.min(f, axis=-1, keepdims=True), np.max(f, axis=-1, keepdims=True)
-    ax, bx = np.min(x, axis=-1, keepdims=True), np.max(x, axis=-1, keepdims=True)
+def fit_pv(f, x, axis=-1, negative=False, **kwargs):
+    f_ = np.moveaxis(f.copy(), axis, -1)
+    x_ = np.moveaxis(x.copy(), axis, -1)
+
+    if negative:
+        f_ *= -1
+
+    af, bf = np.min(f_, axis=-1, keepdims=True), np.max(f_, axis=-1, keepdims=True)
+    ax, bx = np.min(x_, axis=-1, keepdims=True), np.max(x_, axis=-1, keepdims=True)
     af, bf = af, bf - af
     ax, bx = (bx + ax) / 2, bx - ax
 
-    f_ = (f - af) / bf
-    x_ = (x - ax) / bx
+    f_ = (f_ - af) / bf
+    x_ = (x_ - ax) / bx
 
     if len(f.shape) == 1:
         f_ = np.expand_dims(f_, 0)
@@ -32,10 +38,14 @@ def fit_pv(f, x, **kwargs):
     params[...,2] = params[...,2] * np.squeeze(bf) * np.squeeze(bx)
     params[...,3] = params[...,3] * np.squeeze(bf) + np.squeeze(af)
 
-    return np.squeeze(params)
+    if negative:
+        params[...,2] *= -1
+        params[...,3] *= -1
+
+    return np.moveaxis(np.squeeze(params), -1, axis)
 
 
-def lmfit(func_jac, x, y, p0, lam=1e-2, niter=10, **kwargs):
+def lmfit(func_jac, x, y, p0, lam=1e-1, niter=10, **kwargs):
     p = np.expand_dims(p0, -1)
 
     for i in range(niter):

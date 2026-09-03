@@ -3,7 +3,8 @@ import numpy as np
 
 def correct_fringes(data, thr=3e-3, window_size=3,
                     kx=(3, 15, 12, 18, 22),
-                    ky=(27, 27, 0, 20, 16)):
+                    ky=(27, 27, 0, 20, 16)
+                    ):
     '''
     :param data: numpy array of shape (24,nx,ny) or (6,4,nx,ny) containing demodulated data
     :param kx: tuple of ints, horizontal frequencies to be removed

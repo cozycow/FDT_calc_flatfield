@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def correct_prefilter(data, header, prefilter_file, temperature_constant=0.03, cavity_map=None, **kwargs):
+def correct_prefilter(data, header, prefilter_file, temperature_constant=0.03, **kwargs):
     '''
     :param data: numpy array of shape (24,nx,ny) or (6,4,nx,ny)
     :param header: fits header
@@ -36,7 +36,7 @@ def correct_prefilter(data, header, prefilter_file, temperature_constant=0.03, c
     delta_wv = (temperature - prefilter_temperature) * temperature_constant
     prefilter_wavelengths += delta_wv
 
-    prefilter = interpolate_prefilter(coefficients, prefilter_wavelengths, wavelengths, cavity=cavity_map, header=header)
+    prefilter = interpolate_prefilter(coefficients, prefilter_wavelengths, wavelengths, header=header)
     data_ = data.copy().reshape((nwv, -1, nx, ny))
     data_ /= np.expand_dims(prefilter, 1)
     return data_.reshape(data.shape)
@@ -100,7 +100,7 @@ def interpolate(f, x, x_new):
     return fa * a + fb * b
 
 
-def interpolate_prefilter(coeff, wv_prefilter, wv_data, nx=2048, ny=2048, cavity=None, header=None):
+def interpolate_prefilter(coeff, wv_prefilter, wv_data, nx=2048, ny=2048, header=None):
     x, y = np.mgrid[-nx // 2 + 0.5:nx // 2 + 0.5, -ny // 2 + 0.5:ny // 2 + 0.5].astype(np.float32)
     x /= nx / 2
     y /= ny / 2
@@ -110,10 +110,7 @@ def interpolate_prefilter(coeff, wv_prefilter, wv_data, nx=2048, ny=2048, cavity
 
     prefilter = []
     for wv in wv_data:
-        if cavity is None:
-            p = interpolate(coeff, wv_prefilter, np.array([[wv]]))[0]
-        else:
-            p = interpolate(np.expand_dims(coeff, (-1,-2)), wv_prefilter, np.expand_dims(wv - crop(cavity, header=header), (0,1)))[0]
+        p = interpolate(coeff, wv_prefilter, np.array([[wv]]))[0]
         q = polyval2d(x, y, p)
         prefilter.append(q)
     return np.array(prefilter)
