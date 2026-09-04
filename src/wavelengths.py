@@ -1,12 +1,17 @@
 import numpy as np
 
 
-def read_wavelengths(header):
+def read_wavelengths(header, correct_doppler=False):
     nwv = header['WAVENUM']
-    wv = []
+    wvlns = []
     for i in range(nwv):
-        wv.append(header[f'WAVELN{i + 1:02d}'])
-    return np.array(wv)
+        wvlns.append(header[f'WAVELN{i + 1:02d}'])
+    wvlns = np.array(wvlns)
+
+    if correct_doppler:
+        wvlns -= header['OBS_VR'] * 6173.341 / 299792458
+
+    return wvlns
 
 
 def get_wavelengths(header, fg_data, update_header=False, **kwargs):

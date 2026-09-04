@@ -26,6 +26,7 @@ def process(file,
             _demodulate=False,
             _correct_fringes=False,
             _correct_crosstalk=False,
+            _mask=False,
             folder_out='',
             to_file=False,
             verbose=True):
@@ -80,7 +81,13 @@ def process(file,
 
     if deadpix_file is not None:
         with fits.open(deadpix_file) as hdul:
-            deadpix = hdul[0].data[:, ::-1].astype(bool) ###
+            deadpix = hdul[0].data.astype(bool)
+            header_deadpix = hdul[0].header
+
+        detector_deadpix = header_deadpix['DETECTOR']
+        if detector_deadpix != detector_data:
+           deadpix = deadpix[:,::-1]
+
         data = correct_deadpix(data, header_data, deadpix)
 
     if distortion_file is not None:
@@ -107,6 +114,14 @@ def process(file,
     if _correct_crosstalk:
         data = correct_crosstalk(data, header_data)
 
+    if _mask:
+        xi, yi = np.mgrid[:nx,:ny]
+        xc, yc = header_data['CRPIX2'] - 1, header_data['CRPIX1'] - 1
+        rsun = header_data['RSUN_ARC'] / header_data['CDELT1']
+
+        mask = (xi - xc) ** 2 + (yi - yc) ** 2 > rsun ** 2
+        data[..., mask] = np.nan
+
     if to_file:
         file_out = path.join(folder_out, generate_filename(file))
         clone_fits(file, file_out, data.astype(np.float32), header_data)
@@ -114,9 +129,9 @@ def process(file,
         return data.astype(np.float32), header_data
 
 
-def clone_fits(file_in, file_out, data, header=None):
+def clone_fits(file_in, file_out, data, header=None, dtype=np.float32):
     with fits.open(file_in) as hdul:
-        hdul[0].data = data.astype(np.float32)
+        hdul[0].data = data.astype(dtype)
         if header is not None:
             hdul[0].header = header
         hdul.writeto(file_out, overwrite=True)
@@ -154,17 +169,29 @@ def crop(image, header=None, x1=None, x2=None, y1=None, y2=None, **kwargs):
         return image
 
 
-def rebin(data, k, axis=None):
-    if len(data.shape) == 2:
-        nx, ny = data.shape
-        if axis == 0:
-            return np.mean(np.reshape(data[:nx // k * k, :], (nx // k, -1, ny)), axis=-2)
-        elif axis == 1:
-            return np.mean(np.reshape(data[:, :ny // k * k], (nx, ny // k, -1)), axis=-1)
+def rebin(image, k, axis=None, update_header=None):
+    def __update_header(header, k, axis=None):
+        if axis is None:
+            __update_header(header, k, axis=0)
+            __update_header(header, k, axis=1)
         else:
-            return rebin(rebin(data, k, axis=0), k, axis=1)
+            header[f'NAXIS{2-axis:d}'] = header[f'NAXIS{2-axis:d}'] // k
+            header[f'CRPIX{2-axis:d}'] = (header[f'CRPIX{2-axis:d}'] - 0.5) / k + 0.5
+            header[f'CDELT{2-axis:d}'] = header[f'CDELT{2-axis:d}'] * k
+
+    if update_header is not None:
+        __update_header(update_header, k, axis=axis)
+
+    if len(image.shape) == 2:
+        nx, ny = image.shape
+        if axis == 0:
+            return np.mean(np.reshape(image[:nx // k * k, :], (nx // k, -1, ny)), axis=-2)
+        elif axis == 1:
+            return np.mean(np.reshape(image[:, :ny // k * k], (nx, ny // k, -1)), axis=-1)
+        else:
+            return rebin(rebin(image, k, axis=0), k, axis=1)
     else:
         out = []
-        for i in range(len(data)):
-            out.append(rebin(data[i], k, axis=axis))
+        for i in range(len(image)):
+            out.append(rebin(image[i], k, axis=axis))
         return np.array(out)

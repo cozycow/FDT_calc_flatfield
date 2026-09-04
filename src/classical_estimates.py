@@ -1,4 +1,5 @@
 import numpy as np
+from wavelengths import read_wavelengths
 from fit_pv import *
 
 
@@ -17,29 +18,18 @@ def classical_estimates(data, header, **kwargs):
     return q_B * (v_lcp - v_rcp), q_V * (v_lcp + v_rcp) / 2
 
 
-def get_wv_shift(data, header, pol=0, **kwargs):
-
-    if 'wavelengths' in kwargs:
-        wavelengths = kwargs['wavelengths']
-    elif 'WAVENUM' in header:
-        nwv = header['WAVENUM']
-        wavelengths = []
-        for i in range(nwv):
-            wavelengths.append(header[f'WAVELN{i + 1:02d}'])
-        wavelengths = np.array(wavelengths)
-    else:
-        raise ValueError('Wavelengths not provided')
-
-    if 'contpos' in kwargs:
-        contpos = kwargs['contpos']
-    elif 'CONTPOS' in header:
-        contpos = header['CONTPOS'] - 1
-    else:
-        raise ValueError('Continuum position not provided')
-
-    wv0 = np.mean(np.delete(wavelengths, contpos))
+def get_wv_shift(data, header, pol=0, batch=512, **kwargs):
+    wvlns = read_wavelengths(header, correct_doppler=True)
+    wvlns -= 6173.341#header['WAVELNTH']
 
     nx, ny = data.shape[-2:]
     data_ = data.copy().reshape(6, -1, nx, ny)[:, pol]
-    line_params = fit_pv(data_, wavelengths - wv0, axis=0, negative=True, **kwargs)
-    return line_params[0]
+    shift = np.zeros((nx, ny))
+
+    for i in range(-(nx // -batch)):
+        for j in range(-(ny // -batch)):
+            temp = data_[..., i * batch: min((i + 1) * batch, nx), j * batch: min((j + 1) * batch, ny)]
+            line_params = fit_pv(temp, wvlns, axis=0, negative=True, **kwargs)
+            shift[i * batch: min((i + 1) * batch, nx), j * batch: min((j + 1) * batch, ny)] = line_params[0]
+
+    return shift.clip(-0.5,0.5)
