@@ -150,9 +150,9 @@ def calc_cavity(files, folder_out='',
     if verbose:
         print('calculating cavity')
 
-    cavity_lcp = kll(np.nan_to_num(vlcps), centers, weights=np.nan_to_num(weights),
+    cavity_lcp = kll(np.nan_to_num(vlcps), centers, weights=np.nan_to_num(weights).clip(0),
                      niter=niter, sigma=1e-3, vmin=-0.2, vmax=0.2)
-    cavity_rcp = kll(np.nan_to_num(vrcps), centers, weights=np.nan_to_num(weights),
+    cavity_rcp = kll(np.nan_to_num(vrcps), centers, weights=np.nan_to_num(weights).clip(0),
                      niter=niter, sigma=1e-3, vmin=-0.2, vmax=0.2)
 
     cavity = np.array([cavity_lcp, cavity_rcp])
