@@ -98,6 +98,7 @@ def calc_cavity(files, folder_out='',
                                 _demodulate=True,
                                 _correct_fringes=True,
                                 _correct_crosstalk=True,
+                               _calc_wavelengths=True,
                                 #_mask=True,
                                 )
 
@@ -151,9 +152,9 @@ def calc_cavity(files, folder_out='',
         print('calculating cavity')
 
     cavity_lcp = kll(np.nan_to_num(vlcps), centers, weights=np.nan_to_num(weights).clip(0),
-                     niter=niter, sigma=1e-3, vmin=-0.2, vmax=0.2)
+                     niter=niter, sigma=1e-1, vmin=-0.2, vmax=0.2)
     cavity_rcp = kll(np.nan_to_num(vrcps), centers, weights=np.nan_to_num(weights).clip(0),
-                     niter=niter, sigma=1e-3, vmin=-0.2, vmax=0.2)
+                     niter=niter, sigma=1e-1, vmin=-0.2, vmax=0.2)
 
     cavity = np.array([cavity_lcp, cavity_rcp])
     cavity[:,mask] = np.nan

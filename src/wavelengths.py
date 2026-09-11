@@ -1,4 +1,5 @@
 import numpy as np
+from datetime import datetime
 
 
 def read_wavelengths(header, correct_doppler=False):
@@ -14,46 +15,31 @@ def read_wavelengths(header, correct_doppler=False):
     return wvlns
 
 
-def get_wavelengths(header, fg_data, update_header=False, **kwargs):
+def get_wavelengths(header, fg_data, pmp_data, update_header=False, **kwargs):
     fg_temp = header['FGOV1PT1']
-    voltages = get_voltages(fg_data)
+    voltages = get_mean_voltages(header, fg_data, pmp_data)
     wv = to_wavelength(voltages, fg_temp, **kwargs)
     if update_header:
-        set_wavelegths(header, wv)
+        set_wavelegths(header, np.mean(wv, axis=0))
     return wv
 
 
-def set_wavelegths(header, wv):
-    if 'WAVENUM' in header:
-        for i in range(header['WAVENUM']):
-            del header['WAVELN' + ('%02d' % (i + 1))]
-
-    header['WAVENUM'] = len(wv)
-    for i in range(len(wv)):
-        header['WAVELN' + ('%02d' % (i + 1))] = round(wv[i], 4)
-    if len(wv) > 1:
-        header['CONTPOS'] = int(np.where(np.argmax(np.abs(np.diff(wv))) != 0, len(wv), 1))
-        if header['CONTPOS'] == 1:
-            header['CONTPOSN'] = 'blue'
-        else:
-            header['CONTPOSN'] = 'red'
-    else:
-        header['CONTPOS'] = -1
-        header['CONTPOSN'] = 'unknown'
+def take_left(f, x, x_new):
+    idx = np.searchsorted(x, x_new, side='right').clip(1, len(x))
+    return np.take_along_axis(f, idx - 1, axis=0)
 
 
-def get_voltages(fg_data):
-    voltages = np.sort(fg_data['PHI_FG_voltage'])
-    t = np.where(voltages[1:] - voltages[:-1] > 60)[0] + 1
+def calc_mean_voltages(fg_voltages, fg_times, pmp_times, acc_scheme):
+    fg_voltages_ = take_left(fg_voltages, fg_times, pmp_times)
+    return np.mean(fg_voltages_.reshape(acc_scheme), axis=(0,-1)).T
 
-    x_ = 0
-    out = []
-    for x in t:
-        out += [np.median(voltages[x_:x])]
-        x_ = x
-    out += [np.median(voltages[x_:])]
 
-    return np.array(out)
+def get_mean_voltages(header, fg_data, pmp_data):
+    fg_times = np.array([datetime.fromisoformat(temp) for temp in fg_data['RecordTime']])
+    pmp_times = np.array([datetime.fromisoformat(temp) for temp in pmp_data['RecordTime']])
+    fg_voltages = fg_data['PHI_FG_voltage'].astype(float)
+    acc_scheme = (header['ACCROWIT'], header['ACCNROWS'], header['ACCNCOLS'], header['ACCCOLIT'])
+    return calc_mean_voltages(fg_voltages, fg_times, pmp_times, acc_scheme)
 
 
 def to_wavelength(voltage, temperature,
@@ -64,3 +50,20 @@ def to_wavelength(voltage, temperature,
                   **kwargs):
 
     return ref_wavelength + tuning_constant * voltage + temperature_constant * (temperature - T0)
+
+
+def set_wavelegths(header, wv):
+    header['WAVENUM'] = len(wv)
+    for i in range(len(wv)):
+        header['WAVELN' + ('%02d' % (i + 1))] = round(wv[i], 5)
+    if len(wv) > 1:
+        header['CONTPOS'] = int(np.where(np.argmax(np.abs(np.diff(wv))) != 0, len(wv), 1))
+        if header['CONTPOS'] == 1:
+            header['CONTPOSN'] = 'blue'
+        else:
+            header['CONTPOSN'] = 'red'
+    else:
+        header['CONTPOS'] = -1
+        header['CONTPOSN'] = 'unknown'
+
+    ## need to update wavemin, wavemax, tuncons, tempcons

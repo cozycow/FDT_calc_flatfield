@@ -45,7 +45,7 @@ def fit_pv(f, x, axis=-1, negative=False, **kwargs):
     return np.moveaxis(np.squeeze(params), -1, axis)
 
 
-def lmfit(func_jac, x, y, p0, lam=1e-1, niter=10, **kwargs):
+def lmfit(func_jac, x, y, p0, lam=1e-3, niter=10, **kwargs):
     p = np.expand_dims(p0, -1)
 
     for i in range(niter):

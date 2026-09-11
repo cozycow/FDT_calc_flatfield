@@ -26,6 +26,7 @@ def process(file,
             _demodulate=False,
             _correct_fringes=False,
             _correct_crosstalk=False,
+            _calc_wavelengths=False,
             _mask=False,
             folder_out='',
             to_file=False,
@@ -36,9 +37,10 @@ def process(file,
         header_data = hdul[0].header
         img_data = hdul['PHI_FITS_imageSummary'].data
         fg_data = hdul['PHI_FITS_FG_settings'].data
+        pmp_data = hdul['PHI_FITS_PMP_settings'].data
 
-    if 'WAVENUM' not in header_data:
-        _ = get_wavelengths(header_data, fg_data, update_header=True)
+    if 'WAVENUM' not in header_data or _calc_wavelengths:
+        wvs = get_wavelengths(header_data, fg_data, pmp_data, update_header=True)
     scale_data = get_scale(img_data)
     if header_data['PHIDTYPE'] == 'alam':  ###########################################################
         scale_data *= 3
@@ -123,7 +125,7 @@ def process(file,
         data[..., mask] = np.nan
 
     if to_file:
-        file_out = path.join(folder_out, generate_filename(file))
+        file_out = generate_filename(file, folder=folder_out)
         clone_fits(file, file_out, data.astype(np.float32), header_data)
     else:
         return data.astype(np.float32), header_data
@@ -149,12 +151,12 @@ def get_scale(img_data):
         return None
 
 
-def generate_filename(file, prefix='ilam', extension='.fits'):
+def generate_filename(file, prefix='ilam', extension='.fits', folder=''):
     from datetime import datetime
 
     temp = file.split('/')[-1].split('.')[0].split('_')
-    return '_'.join(['-'.join(temp[2].split('-')[:2]) + '-' + prefix, temp[3],
-                     'V' + datetime.today().strftime('%Y%m%d%H%M') + temp[4][-1],  temp[-1]]) + extension
+    return path.join(folder, '_'.join(['-'.join(temp[2].split('-')[:2]) + '-' + prefix, temp[3],
+                     'V' + datetime.today().strftime('%Y%m%d%H%M') + temp[4][-1],  temp[-1]]) + extension)
 
 
 def crop(image, header=None, x1=None, x2=None, y1=None, y2=None, **kwargs):

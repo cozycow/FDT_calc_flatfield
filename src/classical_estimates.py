@@ -18,14 +18,19 @@ def classical_estimates(data, header, **kwargs):
     return q_B * (v_lcp - v_rcp), q_V * (v_lcp + v_rcp) / 2
 
 
-def get_wv_shift(data, header, pol=0, batch=512, **kwargs):
+def get_wv_shift(data, header, pol=0, batch=512, five_points=False, **kwargs):
+    nx, ny = data.shape[-2:]
+    data_ = data.copy().reshape(6, -1, nx, ny)[:, pol]
+
     wvlns = read_wavelengths(header, correct_doppler=True)
     wvlns -= 6173.341#header['WAVELNTH']
 
-    nx, ny = data.shape[-2:]
-    data_ = data.copy().reshape(6, -1, nx, ny)[:, pol]
-    shift = np.zeros((nx, ny))
+    if five_points:
+        contpos = header['CONTPOS'] - 1
+        data_ = np.delete(data_, contpos, axis=0)
+        wvlns = np.delete(wvlns, contpos)
 
+    shift = np.zeros((nx, ny))
     for i in range(-(nx // -batch)):
         for j in range(-(ny // -batch)):
             temp = data_[..., i * batch: min((i + 1) * batch, nx), j * batch: min((j + 1) * batch, ny)]
