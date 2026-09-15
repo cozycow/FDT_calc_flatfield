@@ -9,8 +9,8 @@ def classical_estimates(data, header, **kwargs):
 
     data_ = data.copy().reshape(-1, 4, data.shape[-2], data.shape[-1])
 
-    lcp = (data_[:,0] + data_[:,1]) / 2
-    rcp = (data_[:,0] - data_[:,1]) / 2
+    lcp = (data_[:,0] + data_[:,3]) / 2
+    rcp = (data_[:,0] - data_[:,3]) / 2
 
     v_lcp = get_wv_shift(lcp, header, **kwargs)
     v_rcp = get_wv_shift(rcp, header, **kwargs)

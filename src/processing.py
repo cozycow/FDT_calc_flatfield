@@ -79,7 +79,7 @@ def process(file,
     if cavity_file is not None:
         with fits.open(cavity_file) as hdul:
             cavity = hdul[0].data
-        data = correct_cavity(data, header_data, cavity)
+        data = correct_cavity(data, header_data, cavity, correct_offset=True)
 
     if deadpix_file is not None:
         with fits.open(deadpix_file) as hdul:
