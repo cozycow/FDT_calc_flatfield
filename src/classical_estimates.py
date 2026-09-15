@@ -9,8 +9,8 @@ def classical_estimates(data, header, **kwargs):
 
     data_ = data.copy().reshape(-1, 4, data.shape[-2], data.shape[-1])
 
-    lcp = (data_[:,0] + data_[:,3]) / 2
-    rcp = (data_[:,0] - data_[:,3]) / 2
+    lcp = (data_[:,0] + data_[:,1]) / 2
+    rcp = (data_[:,0] - data_[:,1]) / 2
 
     v_lcp = get_wv_shift(lcp, header, **kwargs)
     v_rcp = get_wv_shift(rcp, header, **kwargs)
@@ -19,11 +19,12 @@ def classical_estimates(data, header, **kwargs):
 
 
 def get_wv_shift(data, header, pol=0, batch=512, five_points=False, **kwargs):
-    nx, ny = data.shape[-2:]
-    data_ = data.copy().reshape(6, -1, nx, ny)[:, pol]
-
     wvlns = read_wavelengths(header, correct_doppler=True)
-    wvlns -= 6173.341#header['WAVELNTH']
+    wvlns -= 6173.341  # header['WAVELNTH']
+
+    nwv = len(wvlns)
+    nx, ny = data.shape[-2:]
+    data_ = data.copy().reshape(nwv, -1, nx, ny)[:, pol]
 
     if five_points:
         contpos = header['CONTPOS'] - 1

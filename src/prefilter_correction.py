@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def correct_prefilter(data, header, prefilter_file, temperature_constant=0.03, **kwargs):
+def correct_prefilter(data, header, prefilter_file, **kwargs):
     '''
     :param data: numpy array of shape (24,nx,ny) or (6,4,nx,ny)
     :param header: fits header
@@ -32,8 +32,8 @@ def correct_prefilter(data, header, prefilter_file, temperature_constant=0.03, *
     nx, ny = data.shape[-2:]
     nwv = len(wavelengths)
 
-    prefilter_wavelengths, coefficients, prefilter_temperature = read_prefilter(prefilter_file)
-    delta_wv = (temperature - prefilter_temperature) * temperature_constant
+    prefilter_wavelengths, coefficients, prefilter_temperature, tuning_constant = read_prefilter(prefilter_file)
+    delta_wv = (temperature - prefilter_temperature) * tuning_constant
     prefilter_wavelengths += delta_wv
 
     prefilter = interpolate_prefilter(coefficients, prefilter_wavelengths, wavelengths, header=header)
@@ -44,7 +44,8 @@ def correct_prefilter(data, header, prefilter_file, temperature_constant=0.03, *
 
 def read_prefilter(file):
     wv, p = [], []
-    T = 61.
+    T = 0
+    k_T = 0
 
     with open(file, 'r') as f:
         lines = f.readlines()
@@ -54,7 +55,9 @@ def read_prefilter(file):
                 if line.startswith('#'):
                     line = line.strip(' #').split(' ')
                     if line[0] == 'Temperature':
-                        T = float(line[1])
+                        T = float(line[-1])
+                    if line[0] == 'Tuning' and line[1] == 'constant':
+                        k_T = float(line[-1])
                 else:
                     line = line.split(', ')
                     wv += [line[0]]
@@ -62,7 +65,8 @@ def read_prefilter(file):
 
     wv = np.array(wv[1:]).astype(np.float32)
     p = np.array(p[1:]).astype(np.float32)
-    return wv, p, T
+
+    return wv, p, T, k_T
 
 
 def polyterms2d(x, y, degree=1):
