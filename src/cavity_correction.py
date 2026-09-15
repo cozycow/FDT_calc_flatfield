@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def correct_cavity(data, header, cavity, **kwargs):
+def correct_cavity(data, header, cavity, correct_offset=False, **kwargs):
     '''
     :param data: numpy array of shape (24,nx,ny) or (6,4,nx,ny) containing modulated intensities
     :param header: fits header
@@ -30,8 +30,11 @@ def correct_cavity(data, header, cavity, **kwargs):
     data_ = data.copy().reshape((6, -1, data.shape[-2], data.shape[-1]))
     cavity_ = crop(cavity, header=header)
 
-    wv_shift = cavity_ - get_wv_shift(data_, header, **kwargs)
-    offset = np.mean(wv_shift * data_[contpos,0]) / np.mean(data_[contpos,0])
+    if correct_offset:
+        wv_shift = cavity_ - get_wv_shift(data_, header, **kwargs) ##### Not for HRT
+        offset = np.mean(wv_shift * data_[contpos,0]) / np.mean(data_[contpos,0]) #########
+    else:
+        offset = 0
     cavity_matrix = generate_cavity_matrix(cavity_ - offset, wavelengths, contpos=contpos)
 
     data_ = np.matmul(cavity_matrix, data_, axes=[(-2, -1), (0, 1), (0, 1)])
