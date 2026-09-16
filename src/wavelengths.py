@@ -42,14 +42,23 @@ def get_mean_voltages(header, fg_data, pmp_data):
     return calc_mean_voltages(fg_voltages, fg_times, pmp_times, acc_scheme)
 
 
-def to_wavelength(voltage, temperature,
+def to_wavelength(x, temperature,
                   temperature_constant = 4.01225e-2,
                   tuning_constant = 3.513e-4,
                   ref_wavelength = 6173.341,
                   T0 = 61,
+                  inv=False,
                   **kwargs):
 
-    return ref_wavelength + tuning_constant * voltage + temperature_constant * (temperature - T0)
+    if inv:
+        return (x - ref_wavelength - temperature_constant * (temperature - T0)) / tuning_constant
+    else:
+        return ref_wavelength + tuning_constant * x + temperature_constant * (temperature - T0)
+
+
+def to_voltage(wavelength, temperature,
+               **kwargs):
+    return to_wavelength(wavelength, temperature, inv=True, **kwargs)
 
 
 def set_wavelegths(header, wv):

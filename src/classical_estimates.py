@@ -18,7 +18,12 @@ def classical_estimates(data, header, **kwargs):
     return q_B * (v_lcp - v_rcp), q_V * (v_lcp + v_rcp) / 2
 
 
-def get_wv_shift(data, header, pol=0, batch=512, five_points=False, **kwargs):
+def get_wv_shift(data, header, **kwargs):
+    line_params = fit_line(data, header, **kwargs)
+    return line_params[0].clip(-0.5,0.5)
+
+
+def fit_line(data, header, pol=0, batch=512, five_points=False, lam=0.1, niter=10, **kwargs):
     wvlns = read_wavelengths(header, correct_doppler=True)
     wvlns -= 6173.341  # header['WAVELNTH']
 
@@ -31,11 +36,12 @@ def get_wv_shift(data, header, pol=0, batch=512, five_points=False, **kwargs):
         data_ = np.delete(data_, contpos, axis=0)
         wvlns = np.delete(wvlns, contpos)
 
-    shift = np.zeros((nx, ny))
+    line_params = np.zeros((5, nx, ny))
     for i in range(-(nx // -batch)):
         for j in range(-(ny // -batch)):
             temp = data_[..., i * batch: min((i + 1) * batch, nx), j * batch: min((j + 1) * batch, ny)]
-            line_params = fit_pv(temp, wvlns, axis=0, negative=True, **kwargs)
-            shift[i * batch: min((i + 1) * batch, nx), j * batch: min((j + 1) * batch, ny)] = line_params[0]
+            line_params[:, i * batch: min((i + 1) * batch, nx), j * batch: min((j + 1) * batch, ny)] = (
+                fit_pv(temp, wvlns, axis=0, negative=True, lam=lam, niter=niter, **kwargs))
 
-    return shift.clip(-0.5,0.5)
+    return line_params
+
