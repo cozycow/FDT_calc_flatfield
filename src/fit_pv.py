@@ -64,8 +64,7 @@ def pvfunc(wv, shift, fwhm, height, offset, *, eta, **kwargs):
 
     L = gamma / np.pi / ((wv - shift) ** 2 + gamma ** 2)
     G = 1 / sigma / np.sqrt(2 * np.pi) * np.exp(-(wv - shift) ** 2 / 2 / sigma ** 2)
-    func = height * (eta * L + (1 - eta) * G) + offset
-    return func
+    return height * (eta * L + (1 - eta) * G) + offset
 
 
 def pvjac(wv, shift, fwhm, height, offset, *, eta, **kwargs):
@@ -81,11 +80,10 @@ def pvjac(wv, shift, fwhm, height, offset, *, eta, **kwargs):
     L_fwhm = L * (1 / gamma - L * np.pi * 2) / 2
     G_fwhm = G * (-1 / sigma + (wv - shift) ** 2 / sigma ** 3) / 2 / np.sqrt(2 * np.log(2))
 
-    jac = np.moveaxis(np.array([height * (eta * L_shift + (1 - eta) * G_shift),
-                                height * (eta * L_fwhm + (1 - eta) * G_fwhm),
-                                eta * L + (1 - eta) * G,
-                                np.ones_like(L),
-                                #height * (L - G)
-                                ]), 0, -1)
-    return jac
+    return np.moveaxis(np.array([height * (eta * L_shift + (1 - eta) * G_shift),
+                                 height * (eta * L_fwhm + (1 - eta) * G_fwhm),
+                                 eta * L + (1 - eta) * G,
+                                 np.ones_like(L),
+                                 #height * (L - G)
+                                 ]), 0, -1)
 

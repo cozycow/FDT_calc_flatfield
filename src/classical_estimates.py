@@ -23,7 +23,7 @@ def get_wv_shift(data, header, **kwargs):
     return line_params[0].clip(-0.5,0.5)
 
 
-def fit_line(data, header, pol=0, batch=512, lam=0.01, niter=10, fwhm0=0.15, eta=0.62, **kwargs):
+def fit_line(data, header, pol=0, batch=512, lam=1e-2, niter=10, fwhm0=0.15, eta=0.62, **kwargs):
     wvlns = read_wavelengths(header, **kwargs)
     wvlns -= 6173.341  # header['WAVELNTH']
 
