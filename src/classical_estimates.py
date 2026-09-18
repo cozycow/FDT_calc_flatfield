@@ -19,22 +19,17 @@ def classical_estimates(data, header, **kwargs):
 
 
 def get_wv_shift(data, header, **kwargs):
-    line_params = fit_line(data, header, **kwargs)
+    line_params = fit_line(data, header, correct_doppler=True, **kwargs)
     return line_params[0].clip(-0.5,0.5)
 
 
-def fit_line(data, header, pol=0, batch=512, five_points=False, lam=0.1, niter=10, **kwargs):
-    wvlns = read_wavelengths(header, correct_doppler=True)
+def fit_line(data, header, pol=0, batch=512, lam=0.1, niter=10, **kwargs):
+    wvlns = read_wavelengths(header, **kwargs)
     wvlns -= 6173.341  # header['WAVELNTH']
 
     nwv = len(wvlns)
     nx, ny = data.shape[-2:]
     data_ = data.copy().reshape(nwv, -1, nx, ny)[:, pol]
-
-    if five_points:
-        contpos = header['CONTPOS'] - 1
-        data_ = np.delete(data_, contpos, axis=0)
-        wvlns = np.delete(wvlns, contpos)
 
     line_params = np.zeros((5, nx, ny))
     for i in range(-(nx // -batch)):

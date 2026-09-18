@@ -2,7 +2,7 @@ import numpy as np
 from datetime import datetime
 
 
-def read_wavelengths(header, correct_doppler=False):
+def read_wavelengths(header, correct_doppler=False, **kwargs):
     nwv = header['WAVENUM']
     wvlns = []
     for i in range(nwv):
