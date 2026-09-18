@@ -15,9 +15,9 @@ def read_wavelengths(header, correct_doppler=False, **kwargs):
     return wvlns
 
 
-def get_wavelengths(header, fg_data, pmp_data, update_header=False, **kwargs):
+def get_wavelengths(header, fg_data, fpa_data, update_header=False, **kwargs):
     fg_temp = header['FGOV1PT1']
-    voltages = get_mean_voltages(header, fg_data, pmp_data)
+    voltages = get_mean_voltages(header, fg_data, fpa_data)
     wv = to_wavelength(voltages, fg_temp, **kwargs)
     if update_header:
         set_wavelegths(header, np.mean(wv, axis=0))
@@ -29,17 +29,17 @@ def take_left(f, x, x_new):
     return np.take_along_axis(f, idx - 1, axis=0)
 
 
-def calc_mean_voltages(fg_voltages, fg_times, pmp_times, acc_scheme):
-    fg_voltages_ = take_left(fg_voltages, fg_times, pmp_times)
+def calc_mean_voltages(fg_voltages, fg_times, fpa_times, acc_scheme):
+    fg_voltages_ = take_left(fg_voltages, fg_times, fpa_times)
     return np.mean(fg_voltages_.reshape(acc_scheme), axis=(0,-1)).T
 
 
-def get_mean_voltages(header, fg_data, pmp_data):
+def get_mean_voltages(header, fg_data, fpa_data):
     fg_times = np.array([datetime.fromisoformat(temp) for temp in fg_data['RecordTime']])
-    pmp_times = np.array([datetime.fromisoformat(temp) for temp in pmp_data['RecordTime']])
+    fpa_times = np.array([datetime.fromisoformat(temp) for temp in fpa_data['RecordTime']])
     fg_voltages = fg_data['PHI_FG_voltage'].astype(float)
     acc_scheme = (header['ACCROWIT'], header['ACCNROWS'], header['ACCNCOLS'], header['ACCCOLIT'])
-    return calc_mean_voltages(fg_voltages, fg_times, pmp_times, acc_scheme)
+    return calc_mean_voltages(fg_voltages, fg_times, fpa_times, acc_scheme)
 
 
 def to_wavelength(x, temperature,

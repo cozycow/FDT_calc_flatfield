@@ -23,7 +23,7 @@ def get_wv_shift(data, header, **kwargs):
     return line_params[0].clip(-0.5,0.5)
 
 
-def fit_line(data, header, pol=0, batch=512, lam=0.1, niter=10, **kwargs):
+def fit_line(data, header, pol=0, batch=512, lam=0.01, niter=10, fwhm0=0.15, eta=0.62, **kwargs):
     wvlns = read_wavelengths(header, **kwargs)
     wvlns -= 6173.341  # header['WAVELNTH']
 
@@ -31,12 +31,12 @@ def fit_line(data, header, pol=0, batch=512, lam=0.1, niter=10, **kwargs):
     nx, ny = data.shape[-2:]
     data_ = data.copy().reshape(nwv, -1, nx, ny)[:, pol]
 
-    line_params = np.zeros((5, nx, ny))
+    line_params = np.zeros((4, nx, ny))
     for i in range(-(nx // -batch)):
         for j in range(-(ny // -batch)):
             temp = data_[..., i * batch: min((i + 1) * batch, nx), j * batch: min((j + 1) * batch, ny)]
             line_params[:, i * batch: min((i + 1) * batch, nx), j * batch: min((j + 1) * batch, ny)] = (
-                fit_pv(temp, wvlns, axis=0, negative=True, lam=lam, niter=niter, **kwargs))
+                fit_pv(temp, wvlns, fwhm0, eta, axis=0, negative=True, lam=lam, niter=niter, **kwargs))
 
     return line_params
 

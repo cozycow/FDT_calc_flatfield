@@ -37,10 +37,10 @@ def process(file,
         header_data = hdul[0].header
         img_data = hdul['PHI_FITS_imageSummary'].data
         fg_data = hdul['PHI_FITS_FG_settings'].data
-        pmp_data = hdul['PHI_FITS_PMP_settings'].data
+        fpa_data = hdul['PHI_FITS_FPA_settings'].data
 
     if 'WAVENUM' not in header_data or _calc_wavelengths:
-        wvs = get_wavelengths(header_data, fg_data, pmp_data, update_header=True)
+        wvs = get_wavelengths(header_data, fg_data, fpa_data, update_header=True)
     scale_data = get_scale(img_data)
     if header_data['PHIDTYPE'] == 'alam':  ###########################################################
         scale_data *= 3
