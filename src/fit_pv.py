@@ -45,17 +45,30 @@ def fit_pv(f, x, fwhm0, eta, axis=-1, negative=False, **kwargs):
     return np.moveaxis(np.squeeze(params), -1, axis)
 
 
-def lmfit(func, jac, x, y, p0, *, lam, niter, **kwargs):
+def lmfit(func, jac, x, y, p0, *, niter, **kwargs):
     p = np.expand_dims(p0, -1)
-
     for i in range(niter):
         f, J = func(x, *np.moveaxis(p, -2, 0), **kwargs), jac(x, *np.moveaxis(p, -2, 0), **kwargs)
-        A = np.moveaxis(J, -1, -2) @ J
-        A += lam * np.identity(A.shape[-1]) * A
-        b = np.moveaxis(J, -1, -2) @ np.expand_dims(y - f, -1)
-        p += np.linalg.solve(A, b)
+        p += solve(J, np.expand_dims(y - f, -1), **kwargs)
 
     return np.squeeze(p)
+
+
+def solve(A, b, *, lam, **kwargs):
+    x = []
+    for A_, b_ in zip(batch_loader(A, **kwargs), batch_loader(b, **kwargs)):
+        b_ = np.swapaxes(A_, -1, -2) @ b_
+        A_ = np.swapaxes(A_, -1, -2) @ A_
+        A_ += lam * np.identity(A_.shape[-1]) * A_
+        x += [np.linalg.solve(A_, b_)]
+
+    return np.concatenate(x)
+
+
+def batch_loader(x, *, batch_size, **kwargs):
+    n = len(x)
+    for i in range(-(n // -batch_size)):
+        yield x[i * batch_size: min((i + 1) * batch_size, n)]
 
 
 def pvfunc(wv, shift, fwhm, height, offset, *, eta, **kwargs):
@@ -64,7 +77,8 @@ def pvfunc(wv, shift, fwhm, height, offset, *, eta, **kwargs):
 
     L = gamma / np.pi / ((wv - shift) ** 2 + gamma ** 2)
     G = 1 / sigma / np.sqrt(2 * np.pi) * np.exp(-(wv - shift) ** 2 / 2 / sigma ** 2)
-    return height * (eta * L + (1 - eta) * G) + offset
+    func = height * (eta * L + (1 - eta) * G) + offset
+    return func
 
 
 def pvjac(wv, shift, fwhm, height, offset, *, eta, **kwargs):
