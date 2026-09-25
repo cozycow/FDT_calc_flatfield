@@ -1,12 +1,9 @@
 import numpy as np
 
 
-def fit_pv(f, x, fwhm0, eta, axis=-1, negative=False, **kwargs):
+def fit_pv(f, x, fwhm0, height0=1, eta0=0.5, axis=-1, **kwargs):
     f_ = np.moveaxis(f.copy(), axis, -1)
     x_ = np.moveaxis(x.copy(), axis, -1)
-
-    if negative:
-        f_ *= -1
 
     if len(f.shape) == 1:
         f_ = np.expand_dims(f_, 0)
@@ -14,64 +11,70 @@ def fit_pv(f, x, fwhm0, eta, axis=-1, negative=False, **kwargs):
     while len(x_.shape) < len(f_.shape):
         x_ = np.expand_dims(x_, 0)
 
-    af, bf = np.min(f_, axis=-1), np.max(f_, axis=-1)
-    ax, bx = np.min(x_, axis=-1), np.max(x_, axis=-1)
+    shift0 = np.take_along_axis(x_,
+                                np.argmax(f_, axis=-1, keepdims=True) * (height0 > 0) +
+                                np.argmin(f_, axis=-1, keepdims=True) * (height0 < 0), axis=-1)[...,0]
 
-    af, bf = (bf + af) / 2, bf - af
-    ax, bx = (bx + ax) / 2, bx - ax
+    offset0 = np.min(f_, axis=-1) * (height0 > 0) + np.max(f_, axis=-1) * (height0 < 0)
 
-    f_ = (f_ - np.expand_dims(af, -1)) / np.expand_dims(bf, -1)
-    x_ = (x_ - np.expand_dims(ax, -1)) / np.expand_dims(bx, -1)
+    local_params = np.moveaxis(np.array([shift0,
+                                         np.ones_like(shift0) * fwhm0,
+                                         offset0,
+                                         np.ones_like(shift0) * height0,
+                                         #np.ones_like(shift0) * eta0
+                                         ]), 0, -1)
 
-    shift0 = np.squeeze(np.take_along_axis(x_, np.argmax(f_, axis=-1, keepdims=True), axis=-1))
-    p0 = np.moveaxis(np.array([shift0,
-                               np.ones_like(shift0) * fwhm0 / bx,
-                               np.ones_like(shift0) * fwhm0 / bx,
-                               -np.ones_like(shift0) * 0.5,
-                               #np.ones_like(shift0) * 0.5
-                               ]), 0, -1)
+    global_params = np.array([eta0])
+    while len(global_params.shape) < len(local_params.shape):
+        global_params = np.expand_dims(global_params, 0)
 
-    params = lmfit(pvfunc, pvjac, x_, f_, p0, eta=eta, **kwargs)
+    local_params, global_params = lmfit(pvfunc, pvjac, x_, f_, local_params, global_params, **kwargs)
 
-    params[...,0] = params[...,0] * bx + ax
-    params[...,1] = params[...,1] * bx
-    params[...,2] = params[...,2] * bf * bx
-    params[...,3] = params[...,3] * bf + af
-
-    if negative:
-        params[...,2] *= -1
-        params[...,3] *= -1
-
-    return np.moveaxis(np.squeeze(params), -1, axis)
+    return np.moveaxis(np.squeeze(local_params), -1, axis), global_params
 
 
-def lmfit(func, jac, x, y, p0, *, niter, **kwargs):
-    p = np.expand_dims(p0, -1)
+def lmfit(func, jac, x, y, local_inits, global_inits, *, niter, **kwargs):
+    local_params = np.expand_dims(local_inits, -1)
+    global_params = np.expand_dims(global_inits, -1)
+    nlocal = local_params.shape[-2]
+    nglobal = global_params.shape[-2]
+
     for i in range(niter):
-        f, J = func(x, *np.moveaxis(p, -2, 0), **kwargs), jac(x, *np.moveaxis(p, -2, 0), **kwargs)
-        p += solve(J, np.expand_dims(y - f, -1), **kwargs)
+        f = func(x, *np.moveaxis(local_params, -2, 0),
+                 *np.moveaxis(global_params, -2, 0), **kwargs)
+        J = jac(x, *np.moveaxis(local_params, -2, 0),
+                *np.moveaxis(global_params, -2, 0), **kwargs)
 
-    return np.squeeze(p)
+        delta_local, delta_global = solve(J[...,:nlocal], J[...,nlocal:nlocal+nglobal], np.expand_dims(y - f, -1), **kwargs)
 
+        local_params += delta_local
+        global_params += delta_global
 
-def solve(A, b, *, lam, **kwargs):
-    x = []
-    for A_, b_ in zip(batch_loader(A, **kwargs), batch_loader(b, **kwargs)):
-        b_ = np.swapaxes(A_, -1, -2) @ b_
-        A_ = np.swapaxes(A_, -1, -2) @ A_
-        A_ += lam * np.identity(A_.shape[-1]) * A_
-        x += [np.linalg.solve(A_, b_)]
-
-    return np.concatenate(x)
+    return np.squeeze(local_params), np.squeeze(global_params)
 
 
-def batch_loader(x, *, batch_size, **kwargs):
-    n = len(x)
-    for i in range(-(n // -batch_size)):
-        yield x[i * batch_size: min((i + 1) * batch_size, n)]
+def solve(Jl, Jg, y, *, lam, **kwargs):
+    local_axes = tuple(range(len(y.shape) - 2))
+
+    A = np.swapaxes(Jl, -1, -2) @ Jl
+    A = np.linalg.inv(A + lam * np.identity(A.shape[-1]) * A + 1e-16 * np.identity(A.shape[-1]))
+    u = np.swapaxes(Jl, -1, -2) @ y
+    dl = A @ u
+
+    B = np.swapaxes(Jl, -1, -2) @ Jg
+    BT = np.swapaxes(B, -1, -2)
+    C = A @ B
+
+    D = np.nanmean(np.swapaxes(Jg, -1, -2) @ Jg - BT @ C, axis=local_axes, keepdims=True)
+    D = np.linalg.inv(D + 1e-16 * np.identity(D.shape[-1]))
+    v = np.nanmean(np.swapaxes(Jg, -1, -2) @ y - BT @ dl, axis=local_axes, keepdims=True)
+    dg = D @ v
+    dl -= C @ dg
+
+    return dl, dg
 
 
-def pvfunc(wv, shift, fwhm, height, offset, *, eta, **kwargs):
+def pvfunc(wv, shift, fwhm, offset, height, eta, *args, **kwargs):
     sigma = fwhm / 2 / np.sqrt(2 * np.log(2))
     gamma = fwhm / 2
 
@@ -81,7 +84,7 @@ def pvfunc(wv, shift, fwhm, height, offset, *, eta, **kwargs):
     return func
 
 
-def pvjac(wv, shift, fwhm, height, offset, *, eta, **kwargs):
+def pvjac(wv, shift, fwhm, offset, height, eta, *args, **kwargs):
     sigma = fwhm / 2 / np.sqrt(2 * np.log(2))
     gamma = fwhm / 2
 
@@ -94,10 +97,11 @@ def pvjac(wv, shift, fwhm, height, offset, *, eta, **kwargs):
     L_fwhm = L * (1 / gamma - L * np.pi * 2) / 2
     G_fwhm = G * (-1 / sigma + (wv - shift) ** 2 / sigma ** 3) / 2 / np.sqrt(2 * np.log(2))
 
-    return np.moveaxis(np.array([height * (eta * L_shift + (1 - eta) * G_shift),
-                                 height * (eta * L_fwhm + (1 - eta) * G_fwhm),
-                                 eta * L + (1 - eta) * G,
-                                 np.ones_like(L),
-                                 #height * (L - G)
-                                 ]), 0, -1)
+    return np.stack([height * (eta * L_shift + (1 - eta) * G_shift),
+                     height * (eta * L_fwhm + (1 - eta) * G_fwhm),
+                     np.ones_like(L),
+                     eta * L + (1 - eta) * G,
+                     height * (L - G)] +
+                    [np.zeros_like(L) for arg in args],
+                    axis=-1)
 

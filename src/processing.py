@@ -180,6 +180,8 @@ def rebin(image, k, axis=None, update_header=None):
             header[f'NAXIS{2-axis:d}'] = header[f'NAXIS{2-axis:d}'] // k
             header[f'CRPIX{2-axis:d}'] = (header[f'CRPIX{2-axis:d}'] - 0.5) / k + 0.5
             header[f'CDELT{2-axis:d}'] = header[f'CDELT{2-axis:d}'] * k
+            header[f'NBIN{2-axis:d}'] = header[f'NBIN{2-axis:d}'] * k
+            header['NBIN'] = header['NBIN'] * k
 
     if update_header is not None:
         __update_header(update_header, k, axis=axis)
