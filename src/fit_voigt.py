@@ -27,33 +27,34 @@ def fit_voigt(f, x, sigma0, height0=1., gamma0=0., axis=-1, **kwargs):
                                          ]), 0, -1)
 
     global_params = np.array([gamma0])
-    local_params, global_params = lmfit(voigt_func, x_, f_, local_params,
+    local_params, global_params = lmfit(voigt_func, (x_, f_), local_params,
                                         global_params,
                                         **kwargs)
 
     return np.moveaxis(np.squeeze(local_params), -1, axis), global_params
 
 
-def voigt_func(wv, shift, sigma, offset, height, gamma, *args, **kwargs):
-    xc = wv - shift
+def voigt_func(X, shift, sigma, offset, height, gamma, *args, **kwargs):
+    wv, f = X
 
+    xc = wv - shift
     z = (xc + 1j * gamma) / sigma / np.sqrt(2)
     w = wofz(z)
     Rew, Imw = np.real(w), np.imag(w)
 
     V = Rew / np.sqrt(2 * np.pi) / sigma
-    V_shift = (Rew * xc - gamma * Imw) / np.sqrt(2 * np.pi) / sigma ** 3 * height
+    V_shift = (Rew * xc - gamma * Imw) / np.sqrt(2 * np.pi) / sigma ** 3
     V_sigma = ((xc ** 2 - gamma ** 2 - sigma ** 2) * Rew -
                2 * xc * gamma * Imw +
-               gamma * sigma * np.sqrt(2 / np.pi)) / np.sqrt(2 * np.pi) / sigma ** 4 * height
-    V_gamma = -(sigma * np.sqrt(2 / np.pi) - xc * Imw - gamma * Rew) / np.sqrt(2 * np.pi) / sigma ** 3 * height
+               gamma * sigma * np.sqrt(2 / np.pi)) / np.sqrt(2 * np.pi) / sigma ** 4
+    V_gamma = -(sigma * np.sqrt(2 / np.pi) - xc * Imw - gamma * Rew) / np.sqrt(2 * np.pi) / sigma ** 3
 
-    return np.stack([V * height + offset,
-                     V_shift,
-                     V_sigma,
+    return np.stack([V * height + offset - f,
+                     V_shift * height,
+                     V_sigma * height,
                      np.ones_like(V),
                      V,
-                     V_gamma,
+                     V_gamma * height,
                      ] + [np.zeros_like(Rew) for arg in args],
                     axis=-1)
 

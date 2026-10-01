@@ -28,6 +28,7 @@ def process(file,
             _correct_crosstalk=False,
             _calc_wavelengths=False,
             _mask=False,
+            _rebin=1,
             folder_out='',
             to_file=False,
             verbose=True):
@@ -116,11 +117,14 @@ def process(file,
     if _correct_crosstalk:
         data = correct_crosstalk(data, header_data)
 
+    data = rebin(data, _rebin, update_header=header_data)
+
     if _mask:
-        xi, yi = np.mgrid[:nx,:ny]
+        nx, ny = header_data['NAXIS2'], header_data['NAXIS1']
         xc, yc = header_data['CRPIX2'] - 1, header_data['CRPIX1'] - 1
         rsun = header_data['RSUN_ARC'] / header_data['CDELT1']
 
+        xi, yi = np.mgrid[:nx, :ny]
         mask = (xi - xc) ** 2 + (yi - yc) ** 2 > rsun ** 2
         data[..., mask] = np.nan
 
@@ -151,11 +155,14 @@ def get_scale(img_data):
         return None
 
 
-def generate_filename(file, prefix='ilam', extension='.fits', folder=''):
+def generate_filename(file, prefix=None, extension='.fits', folder=''):
     from datetime import datetime
 
     temp = file.split('/')[-1].split('.')[0].split('_')
-    return path.join(folder, '_'.join(['-'.join(temp[2].split('-')[:2]) + '-' + prefix, temp[3],
+    if prefix is None:
+        prefix = temp[2].split('-')[-1]
+
+    return path.join(folder, '_'.join(['-'.join(temp[2].split('-')[:-1]) + '-' + prefix, temp[3],
                      'V' + datetime.today().strftime('%Y%m%d%H%M') + temp[4][-1],  temp[-1]]) + extension)
 
 

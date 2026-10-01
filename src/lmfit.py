@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def lmfit(func, x, y, local_inits, global_inits=None, *, niter, **kwargs):
+def lmfit(func, x, local_inits, global_inits=None, *, niter, **kwargs):
     if global_inits is None:
         global_inits = np.array([0.])
 
@@ -19,7 +19,7 @@ def lmfit(func, x, y, local_inits, global_inits=None, *, niter, **kwargs):
                 *np.moveaxis(global_params, -2, 0), **kwargs)
         f, J = J[...,0], J[...,1:]
 
-        delta_local, delta_global = solve(J[...,:nlocal], J[...,nlocal:nlocal+nglobal], np.expand_dims(y - f, -1), **kwargs)
+        delta_local, delta_global = solve(J[...,:nlocal], J[...,nlocal:nlocal+nglobal], -np.expand_dims(f, -1), **kwargs)
 
         local_params += delta_local
         global_params += delta_global

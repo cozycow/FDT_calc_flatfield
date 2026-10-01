@@ -35,7 +35,9 @@ def fit_line(data, header, pol=0, lam=1e-3, niter=10, sigma0=0.043, gamma0=0.053
     height0 = -np.nanmedian(data_[contpos]) * Wmu
 
     return fit_voigt(data_, wvlns,
-                  sigma0, height0=height0, gamma0=gamma0,
-                  axis=0, lam=lam, niter=niter, **kwargs)
+                     #np.delete(data_, contpos, axis=0), np.delete(wvlns, contpos, axis=0),
+                     sigma0, height0=height0, gamma0=gamma0,
+                     #weight=np.expand_dims(data_[contpos].clip(0), (-1,-2)),
+                     axis=0, lam=lam, niter=niter, **kwargs)
 
 
