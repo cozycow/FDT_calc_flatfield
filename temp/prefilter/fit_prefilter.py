@@ -3,7 +3,7 @@ from lmfit import lmfit
 from scipy.special import wofz
 
 
-def fit_prefilter(f1, f2, wv, Wmu=0.06, sigma0=0.043, gamma0=0.053, axis=-1, **kwargs):
+def fit_prefilter(f1, f2, wv, height0=-0.06, sigma0=0.043, gamma0=0.053, axis=-1, **kwargs):
 
     f1_ = np.moveaxis(f1.copy(), axis, -1)
     f2_ = np.moveaxis(f2.copy(), axis, -1)
@@ -26,11 +26,11 @@ def fit_prefilter(f1, f2, wv, Wmu=0.06, sigma0=0.043, gamma0=0.053, axis=-1, **k
     #offset0 = np.nanmedian(np.max(f1_, axis=-1))
 
     local_params = np.moveaxis(np.array([np.ones_like(f1_[...,0]) * shift0,
-                                         np.ones_like(f1_[...,0]) * sigma0,
-                                         #np.ones_like(f1_[..., 0]) * gamma0
+                                         np.ones_like(f1_[..., 0]) * height0,
+                                         #np.ones_like(f1_[...,0]) * sigma0,
                                          ]), 0, -1)
 
-    global_params = np.array([Wmu, gamma0, delta0])
+    global_params = np.array([sigma0, gamma0, delta0])
     local_params, global_params, res = lmfit(double_voigt, (wv_, f1_, f2_), local_params,
                                         global_params,
                                         **kwargs)
@@ -38,26 +38,20 @@ def fit_prefilter(f1, f2, wv, Wmu=0.06, sigma0=0.043, gamma0=0.053, axis=-1, **k
     return np.moveaxis(local_params, -1, axis), global_params, np.nanstd(res, axis=-1)
 
 
-def double_voigt(X, shift, sigma, Wmu, gamma, delta, *args, **kwargs):
+def double_voigt(X, shift, height, sigma, gamma, delta, *args, **kwargs):
     wv, f1, f2 = X
 
-    res1, V1 = voigt_func((wv, 0), shift, sigma, Wmu, gamma, delta, *args, **kwargs)
-    res2, V2 = voigt_func((wv, 0), shift + delta, sigma, Wmu, gamma, delta, *args, **kwargs)
+    res1, V1 = voigt_func((wv, 0), shift, height, sigma, gamma, delta, *args, **kwargs)
+    res2, V2 = voigt_func((wv, 0), shift + delta, height, sigma, gamma, delta, *args, **kwargs)
     V2[...,4] = V2[...,0]
 
     return (res1 * f2 - res2 * f1,
             V1 * np.expand_dims(f2, -1) - V2 * np.expand_dims(f1, -1))
 
 
-def voigt_func(X, shift, sigma, Wmu, gamma, *args, **kwargs):
-    #gamma = 0.053
-    #Wmu = 0.07
-
+def voigt_func(X, shift, height, sigma, gamma, *args, **kwargs):
     wv, f = X
     wvc = wv - shift
-
-    offset = 1
-    height = -offset * Wmu
 
     z = (wvc + 1j * gamma) / sigma / np.sqrt(2)
     w = wofz(z)
@@ -70,10 +64,10 @@ def voigt_func(X, shift, sigma, Wmu, gamma, *args, **kwargs):
                gamma * sigma * np.sqrt(2 / np.pi)) / np.sqrt(2 * np.pi) / sigma ** 4
     V_gamma = -(sigma * np.sqrt(2 / np.pi) - wvc * Imw - gamma * Rew) / np.sqrt(2 * np.pi) / sigma ** 3
 
-    return (V * height + offset - f,
+    return (V * height + 1 - f,
             np.stack([V_shift * height,
+                      V,
                       V_sigma * height,
-                      -V * offset,
                       V_gamma * height,
                       ] + [np.zeros_like(Rew) for arg in args],
                      axis=-1))
