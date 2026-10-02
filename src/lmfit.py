@@ -15,16 +15,15 @@ def lmfit(func, x, local_inits, global_inits=None, *, niter, **kwargs):
     nglobal = global_params.shape[-2]
 
     for i in range(niter):
-        J = func(x, *np.moveaxis(local_params, -2, 0),
+        res, J = func(x, *np.moveaxis(local_params, -2, 0),
                 *np.moveaxis(global_params, -2, 0), **kwargs)
-        f, J = J[...,0], J[...,1:]
 
-        delta_local, delta_global = solve(J[...,:nlocal], J[...,nlocal:nlocal+nglobal], -np.expand_dims(f, -1), **kwargs)
+        delta_local, delta_global = solve(J[...,:nlocal], J[...,nlocal:nlocal+nglobal], -np.expand_dims(res, -1), **kwargs)
 
         local_params += delta_local
         global_params += delta_global
 
-    return np.squeeze(local_params), np.squeeze(global_params)
+    return np.squeeze(local_params, -1), np.squeeze(global_params), res
 
 
 def solve(Jl, Jg, y, *, lam, **kwargs):
@@ -35,13 +34,15 @@ def solve(Jl, Jg, y, *, lam, **kwargs):
     u = np.swapaxes(Jl, -1, -2) @ y
     dl = A @ u
 
+    W = 1 / (np.swapaxes(y, -1, -2) @ y + 1e-15)
+
     B = np.swapaxes(Jl, -1, -2) @ Jg
-    BT = np.swapaxes(B, -1, -2)
+    BT = np.swapaxes(Jg, -1, -2) @ Jl
     C = A @ B
 
-    D = np.nanmean(np.swapaxes(Jg, -1, -2) @ Jg - BT @ C, axis=local_axes, keepdims=True)
+    D = np.nanmean((np.swapaxes(Jg , -1, -2) @ Jg - BT @ C) * W, axis=local_axes, keepdims=True)
     D = np.linalg.inv(D + 1e-15 * np.identity(D.shape[-1]))
-    v = np.nanmean(np.swapaxes(Jg, -1, -2) @ y - BT @ dl, axis=local_axes, keepdims=True)
+    v = np.nanmean((np.swapaxes(Jg, -1, -2) @ y - BT @ dl) * W, axis=local_axes, keepdims=True)
     dg = D @ v
     dl -= C @ dg
 

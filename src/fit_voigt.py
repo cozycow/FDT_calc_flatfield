@@ -27,11 +27,11 @@ def fit_voigt(f, x, sigma0, height0=1., gamma0=0., axis=-1, **kwargs):
                                          ]), 0, -1)
 
     global_params = np.array([gamma0])
-    local_params, global_params = lmfit(voigt_func, (x_, f_), local_params,
+    local_params, global_params, res = lmfit(voigt_func, (x_, f_), local_params,
                                         global_params,
                                         **kwargs)
 
-    return np.moveaxis(np.squeeze(local_params), -1, axis), global_params
+    return np.moveaxis(local_params, -1, axis), global_params, np.nanstd(res, axis=-1)
 
 
 def voigt_func(X, shift, sigma, offset, height, gamma, *args, **kwargs):
@@ -49,12 +49,12 @@ def voigt_func(X, shift, sigma, offset, height, gamma, *args, **kwargs):
                gamma * sigma * np.sqrt(2 / np.pi)) / np.sqrt(2 * np.pi) / sigma ** 4
     V_gamma = -(sigma * np.sqrt(2 / np.pi) - xc * Imw - gamma * Rew) / np.sqrt(2 * np.pi) / sigma ** 3
 
-    return np.stack([V * height + offset - f,
-                     V_shift * height,
-                     V_sigma * height,
-                     np.ones_like(V),
-                     V,
-                     V_gamma * height,
-                     ] + [np.zeros_like(Rew) for arg in args],
-                    axis=-1)
+    return (V * height + offset - f,
+            np.stack([V_shift * height,
+                      V_sigma * height,
+                      np.ones_like(V),
+                      V,
+                      V_gamma * height,
+                      ] + [np.zeros_like(Rew) for arg in args],
+                     axis=-1))
 

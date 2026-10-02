@@ -27,29 +27,31 @@ def fit_prefilter(f1, f2, wv, Wmu=0.06, sigma0=0.043, gamma0=0.053, axis=-1, **k
 
     local_params = np.moveaxis(np.array([np.ones_like(f1_[...,0]) * shift0,
                                          np.ones_like(f1_[...,0]) * sigma0,
+                                         #np.ones_like(f1_[..., 0]) * gamma0
                                          ]), 0, -1)
 
-    global_params = np.array([delta0])
-    local_params, global_params = lmfit(double_voigt, (wv_, f1_, f2_), local_params,
+    global_params = np.array([Wmu, gamma0, delta0])
+    local_params, global_params, res = lmfit(double_voigt, (wv_, f1_, f2_), local_params,
                                         global_params,
                                         **kwargs)
 
-    return np.moveaxis(np.squeeze(local_params), -1, axis), global_params
+    return np.moveaxis(local_params, -1, axis), global_params, np.nanstd(res, axis=-1)
 
 
-def double_voigt(X, shift, sigma, delta, *args, **kwargs):
+def double_voigt(X, shift, sigma, Wmu, gamma, delta, *args, **kwargs):
     wv, f1, f2 = X
 
-    V1 = voigt_func((wv, 0), shift, sigma, delta, *args, **kwargs)
-    V2 = voigt_func((wv, 0), shift + delta, sigma, delta, *args, **kwargs)
-    V2[...,3] = V2[...,1]
+    res1, V1 = voigt_func((wv, 0), shift, sigma, Wmu, gamma, delta, *args, **kwargs)
+    res2, V2 = voigt_func((wv, 0), shift + delta, sigma, Wmu, gamma, delta, *args, **kwargs)
+    V2[...,4] = V2[...,0]
 
-    return V1 / np.expand_dims(f1, -1) - V2 / np.expand_dims(f2, -1)
+    return (res1 * f2 - res2 * f1,
+            V1 * np.expand_dims(f2, -1) - V2 * np.expand_dims(f1, -1))
 
 
-def voigt_func(X, shift, sigma, *args, **kwargs):
-    gamma = 0.053
-    Wmu = 0.075
+def voigt_func(X, shift, sigma, Wmu, gamma, *args, **kwargs):
+    #gamma = 0.053
+    #Wmu = 0.07
 
     wv, f = X
     wvc = wv - shift
@@ -66,13 +68,13 @@ def voigt_func(X, shift, sigma, *args, **kwargs):
     V_sigma = ((wvc ** 2 - gamma ** 2 - sigma ** 2) * Rew -
                2 * wvc * gamma * Imw +
                gamma * sigma * np.sqrt(2 / np.pi)) / np.sqrt(2 * np.pi) / sigma ** 4
-    #V_gamma = -(sigma * np.sqrt(2 / np.pi) - wvc * Imw - gamma * Rew) / np.sqrt(2 * np.pi) / sigma ** 3
+    V_gamma = -(sigma * np.sqrt(2 / np.pi) - wvc * Imw - gamma * Rew) / np.sqrt(2 * np.pi) / sigma ** 3
 
-    return np.stack([V * height + offset - f,
-                     V_shift * height,
-                     V_sigma * height,
-                     #-V * offset,
-                     #V_gamma * height,
-                     ] + [np.zeros_like(Rew) for arg in args],
-                    axis=-1)
+    return (V * height + offset - f,
+            np.stack([V_shift * height,
+                      V_sigma * height,
+                      -V * offset,
+                      V_gamma * height,
+                      ] + [np.zeros_like(Rew) for arg in args],
+                     axis=-1))
 
