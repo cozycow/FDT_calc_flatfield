@@ -1,44 +1,57 @@
 import numpy as np
 
 
-def lmfit(func, x, local_inits, global_inits=None, *, niter, **kwargs):
-    if global_inits is None:
-        global_inits = np.array([0.])
+def lstsq_loss(y, f, J):
+    return f - y, J
 
-    local_params = np.expand_dims(local_inits, -1)
-    global_params = np.expand_dims(global_inits, -1)
 
-    while len(global_params.shape) < len(local_params.shape):
-        global_params = np.expand_dims(global_params, 0)
+def lmfit(func, x, y,
+          local_inits,
+          global_inits=np.array([]),
+          loss=lstsq_loss,
+          niter=1, **kwargs):
 
-    nlocal = local_params.shape[-2]
-    nglobal = global_params.shape[-2]
+    local_params = np.expand_dims(local_inits, 1)
+    global_params = np.expand_dims(global_inits, 1)
+
+    nlocal = len(local_params)
+    nglobal = len(global_params)
 
     for i in range(niter):
-        res, J = func(x, *np.moveaxis(local_params, -2, 0),
-                *np.moveaxis(global_params, -2, 0), **kwargs)
+        f, J = func(x, *local_params, *global_params, **kwargs)
+        res, J = loss(y, f, J)
 
-        delta_local, delta_global = solve(J[...,:nlocal], J[...,nlocal:nlocal+nglobal], -np.expand_dims(res, -1), **kwargs)
+        delta_local, delta_global = solve(np.moveaxis(J, (0,1), (-1,-2)),
+                                          -np.expand_dims(np.moveaxis(res, 0, -1), -1),
+                                          np.arange(nlocal, nlocal + nglobal),
+                                          **kwargs)
 
-        local_params += delta_local
-        global_params += delta_global
+        local_params += np.moveaxis(delta_local, (-2,-1), (0,1))
+        global_params += np.moveaxis(delta_global, (-2,-1), (0,1))
 
-    return np.squeeze(local_params, -1), np.squeeze(global_params), res
+    return np.squeeze(local_params, 1), np.squeeze(global_params, 1), res
 
 
-def solve(Jl, Jg, y, *, lam, **kwargs):
-    local_axes = tuple(range(len(y.shape) - 2))
+def solve(J, y,
+          global_idx=np.array([]), lam=0., **kwargs):
+
+    n = J.shape[-1]
+    local_idx = np.delete(np.arange(n), global_idx)
+    local_axes = tuple(np.arange(len(y.shape) - 2))
+
+    Jl = J[...,local_idx]
+    Jg = J[...,global_idx]
 
     A = np.swapaxes(Jl, -1, -2) @ Jl
     A = np.linalg.inv(A + lam * np.identity(A.shape[-1]) * A + 1e-15 * np.identity(A.shape[-1]))
     u = np.swapaxes(Jl, -1, -2) @ y
     dl = A @ u
 
-    W = 1 / (np.swapaxes(y, -1, -2) @ y + 1e-15)
-
     B = np.swapaxes(Jl, -1, -2) @ Jg
-    BT = np.swapaxes(Jg, -1, -2) @ Jl
+    BT = np.swapaxes(B, -1, -2)
     C = A @ B
+
+    W = 1 / (np.swapaxes(y, -1, -2) @ y + 1e-15)
 
     D = np.nanmean((np.swapaxes(Jg , -1, -2) @ Jg - BT @ C) * W, axis=local_axes, keepdims=True)
     D = np.linalg.inv(D + 1e-15 * np.identity(D.shape[-1]))
@@ -47,3 +60,4 @@ def solve(Jl, Jg, y, *, lam, **kwargs):
     dl -= C @ dg
 
     return dl, dg
+

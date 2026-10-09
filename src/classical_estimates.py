@@ -20,10 +20,10 @@ def classical_estimates(data, header, **kwargs):
 
 def get_wv_shift(data, header, **kwargs):
     line_params = fit_line(data, header, correct_doppler=True, **kwargs)
-    return line_params[0].clip(-0.5,0.5)
+    return line_params[0][0].clip(-0.5,0.5)
 
 
-def fit_line(data, header, pol=0, lam=1e-3, niter=10, sigma0=0.043, gamma0=0.053, Wmu=0.06, **kwargs):
+def fit_line(data, header, pol=0, lam=0.1, niter=10, sigma0=0.043, gamma0=0.053, Wmu=0.06, **kwargs):
     contpos = header['CONTPOS'] - 1
 
     wvlns = read_wavelengths(header, **kwargs)
@@ -32,12 +32,10 @@ def fit_line(data, header, pol=0, lam=1e-3, niter=10, sigma0=0.043, gamma0=0.053
     nwv = len(wvlns)
     nx, ny = data.shape[-2:]
     data_ = data.copy().reshape(nwv, -1, nx, ny)[:, pol]
-    height0 = -np.nanmedian(data_[contpos]) * Wmu
+    height0 = -data_[contpos] * Wmu
 
     return fit_voigt(data_, wvlns,
-                     #np.delete(data_, contpos, axis=0), np.delete(wvlns, contpos, axis=0),
                      sigma0, height0=height0, gamma0=gamma0,
-                     #weight=np.expand_dims(data_[contpos].clip(0), (-1,-2)),
                      axis=0, lam=lam, niter=niter, **kwargs)
 
 
