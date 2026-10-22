@@ -92,6 +92,6 @@ def realign(data, x0=None, y0=None, **kwargs):
     for i in range(len(data_)):
         xc, yc, _ = find_center(data_[i], **kwargs)
         dx, dy = x0 - xc, y0 - yc
-        data_[i] = roll_float(data_[i], dx, dy)
+        data_[i] = roll_float(data_[i], dx, dy, **kwargs)
 
     return data_.reshape(data.shape)

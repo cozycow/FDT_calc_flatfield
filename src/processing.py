@@ -46,7 +46,10 @@ def process(file,
     if header_data['PHIDTYPE'] == 'alam':  ###########################################################
         scale_data *= 3
 
-    cpos = int(header_data['CONTPOS']) - 1
+    if header_data['CONTPOS'] == -1:
+        cpos = 0
+    else:
+        cpos = int(header_data['CONTPOS']) - 1
     detector_data = header_data['DETECTOR']
 
     nx, ny, nwv = header_data['NAXIS2'], header_data['NAXIS1'], header_data['WAVENUM']
@@ -67,6 +70,10 @@ def process(file,
     if flatfield_file is not None:
         with fits.open(flatfield_file) as hdul:
             flat = hdul[0].data
+
+        if header_data['ACCNCOLS'] == 1:
+            flat = np.nanmean(flat, axis=0)
+
         data = data / crop(flat, header_data)
 
     if prefilter_file is not None:
